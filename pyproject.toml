@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "timezone-aware-ledger-recon"
+version = "0.1.0"
+description = "Reconcile bank, ledger, and verification sources that disagree on timezone."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Andika Agung Januardi" }]
+keywords = [
+    "reconciliation",
+    "payments",
+    "fintech",
+    "pandas",
+    "ledger",
+    "finance-operations",
+    "timezone",
+    "utc",
+    "wib",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial",
+]
+dependencies = [
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "openpyxl>=3.1",
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.urls]
+Homepage = "https://github.com/dikaakid/timezone-aware-ledger-recon"
+Issues = "https://github.com/dikaakid/timezone-aware-ledger-recon/issues"
+Changelog = "https://github.com/dikaakid/timezone-aware-ledger-recon/blob/main/CHANGELOG.md"
+Companion = "https://github.com/dikaakid/ledger-reconciliation-tool"
+
+[project.scripts]
+timezone-recon = "ledger_recon.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ledger_recon*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["examples/dummy_data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W"]
