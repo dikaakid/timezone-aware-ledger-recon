@@ -22,7 +22,8 @@ def _config(path) -> ReconConfig:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="ledger-recon", description="Reconcile a bank statement against an internal ledger."
+        prog="timezone-recon",
+        description="Reconcile bank, ledger, and verification sources in different timezones.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -46,6 +47,12 @@ def main(argv: list[str] | None = None) -> int:
     pair.add_argument("-o", "--output", type=Path, default=Path("reconciliation_report.xlsx"))
     pair.add_argument("--config", type=Path)
     pair.add_argument("--force", action="store_true")
+    pair.add_argument(
+        "--metabase",
+        type=Path,
+        default=None,
+        help="Optional Metabase verification export (UTC timestamps).",
+    )
 
     args = parser.parse_args(argv)
     cfg = _config(args.config)
@@ -59,7 +66,14 @@ def main(argv: list[str] | None = None) -> int:
     for p in (args.statement, args.ledger):
         if not p.exists():
             raise SystemExit(f"File not found: {p}")
-    res = reconcile_day(args.statement, [args.ledger], date.fromisoformat(args.date), cfg, args.force)
+    res = reconcile_day(
+        args.statement,
+        [args.ledger],
+        date.fromisoformat(args.date),
+        cfg,
+        args.force,
+        metabase_src=args.metabase,
+    )
     if res is None:
         return 1
     write_report(res["sheets"], args.output)

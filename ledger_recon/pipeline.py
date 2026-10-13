@@ -11,11 +11,13 @@ import pandas as pd
 from .config import ReconConfig
 from .core import build_line_per_line, statement_looks_incomplete, summarize
 from .loaders import filter_window, load_ledger, load_statement
+from .metabase import load_metabase, verify_unrecon
 from .report import account_pivot, summary_frame, write_report
 from .tracker import TRACKER_NAME, ensure_tracker_valid, recheck_tracker, record_consumed_ids, update_tracker
 
 STATEMENT_RE = re.compile(r"^statement_(\d{4}-\d{2}-\d{2})\.csv$", re.IGNORECASE)
 LEDGER_RE = re.compile(r"^ledger_(\d{4}-\d{2}-\d{2})(?:_(\d{4}-\d{2}-\d{2}))?\.csv$", re.IGNORECASE)
+METABASE_RE = re.compile(r"^metabase_(\d{4}-\d{2}-\d{2})\.csv$", re.IGNORECASE)
 OUTPUT_TEMPLATE = "recon_{d}.xlsx"
 
 
@@ -40,6 +42,36 @@ def index_ledgers(folder: Path) -> list:
     return entries
 
 
+def index_metabase(folder: Path) -> dict:
+    """{date: path} for metabase_YYYY-MM-DD.csv files."""
+    found = {}
+    for fp in Path(folder).glob("*.csv"):
+        m = METABASE_RE.match(fp.name)
+        if m:
+            found[date.fromisoformat(m.group(1))] = fp
+    return found
+
+
+def _attach_metabase_status(lpl: pd.DataFrame, mb: pd.DataFrame, cfg: ReconConfig) -> pd.DataFrame:
+    """Merge Metabase verification status onto unreconciled rows.
+
+    Recon rows keep Metabase_Status = None. Only Unrecon rows are checked.
+    """
+    lpl = lpl.copy()
+    unrecon_mask = lpl["Match?"] == "Unrecon"
+    if not unrecon_mask.any():
+        lpl["Metabase_Status"] = None
+        return lpl
+
+    verified = verify_unrecon(lpl.loc[unrecon_mask].copy(), mb, cfg)
+    merged = lpl.merge(
+        verified[["reference", "amount_minor", "occurrence", "Metabase_Status"]],
+        on=["reference", "amount_minor", "occurrence"],
+        how="left",
+    )
+    return merged
+
+
 def ledgers_for(index: list, start: date, end: date) -> list:
     seen, out = set(), []
     for s, e, fp in index:
@@ -50,7 +82,13 @@ def ledgers_for(index: list, start: date, end: date) -> list:
 
 
 def reconcile_day(
-    statement_src, ledger_srcs: list, d: date, cfg: ReconConfig, force: bool = False, log=print
+    statement_src,
+    ledger_srcs: list,
+    d: date,
+    cfg: ReconConfig,
+    force: bool = False,
+    log=print,
+    metabase_src=None,
 ):
     """Reconcile one calendar day. Returns a dict, or None when the day is skipped."""
     w0, w1 = d - timedelta(days=cfg.ledger_window_days), d + timedelta(days=cfg.ledger_window_days)
@@ -91,6 +129,9 @@ def reconcile_day(
         return None
 
     lpl = build_line_per_line(statement, ledger, d, cfg)
+    if metabase_src is not None:
+        mb = load_metabase(metabase_src, cfg)
+        lpl = _attach_metabase_status(lpl, mb, cfg)
     anomalies = extractor.anomaly_summary()
     if anomalies:
         log(
@@ -134,7 +175,11 @@ def run_batch(
 
     statements = index_statements(data_dir)
     ledgers = index_ledgers(data_dir)
-    log(f"Found {len(statements)} statements, {len(ledgers)} ledger files.")
+    metabase_index = index_metabase(data_dir)
+    log(
+        f"Found {len(statements)} statements, {len(ledgers)} ledger files, "
+        f"{len(metabase_index)} metabase files."
+    )
 
     def done(d):
         return (output_dir / OUTPUT_TEMPLATE.format(d=d.isoformat())).exists()
@@ -150,7 +195,15 @@ def run_batch(
     for d in todo:
         log(f"\n=== Processing {d.isoformat()} ===")
         w0, w1 = d - timedelta(days=cfg.ledger_window_days), d + timedelta(days=cfg.ledger_window_days)
-        res = reconcile_day(statements[d], ledgers_for(ledgers, w0, w1), d, cfg, d in force, log)
+        res = reconcile_day(
+            statements[d],
+            ledgers_for(ledgers, w0, w1),
+            d,
+            cfg,
+            d in force,
+            log,
+            metabase_src=metabase_index.get(d),
+        )
         if res is None:
             continue
         out_path = output_dir / OUTPUT_TEMPLATE.format(d=d.isoformat())
