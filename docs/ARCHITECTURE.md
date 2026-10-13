@@ -73,3 +73,45 @@ closed in the same pass so one transaction is never left half-open.
 For `Recon` rows the absolute time gap between the paired rows is labelled `Strong` (≤ 1 min),
 `Moderate` (≤ 10 min) or `Weak` (> 10 min). Weak pairs stay matched but are counted in the summary so
 a reviewer can prioritise them.
+
+
+## Timezone normalization
+
+The three sources do not share a timezone, so timestamps must be normalised
+before any comparison. Normalisation happens **once, at the loader boundary**:
+`localize()` attaches the source's native timezone and converts to WIB, so
+`core.py` only ever sees WIB timestamps.
+
+**Why not auto-detect.** A string with no offset is ambiguous; a column that
+mixes offset-carrying and offset-less rows is worse. The source timezone is a
+property of the source, declared once in `ReconConfig.source_timezones`.
+
+**Why not convert inside matching.** Conversion is `O(N)` and belongs at load.
+Matching is `O(N log N)` on already-normalised data. Duplicating the rule in
+three places is how silent drift starts.
+
+**Why not store tz-aware datetimes in Excel.** Excel cannot. The report writes
+naive WIB via `to_naive_wib()` and adds `_gmt7` string columns that carry the
+`+0700` offset explicitly. Timestamps stay tz-aware in memory.
+
+**Why not DST.** Indonesia has none. A DST-aware path would be dead code.
+
+Full rationale and the failure modes the tests protect against are in
+[docs/TIMEZONE.md](TIMEZONE.md).
+
+## Verification layer
+
+After primary reconciliation (bank vs GDS), every `Unrecon` row is checked
+against Metabase. The join key is `(reference, amount_minor, occurrence)`
+within the same WIB day -- **never by reference alone**, because a single
+virtual account can be reused many times per day.
+
+Status labels distinguish three cases:
+
+- `Unrecon - pending GDS`: present and final in Metabase. Data pipeline lag,
+  not a real break.
+- `Unrecon - confirmed missing`: absent or not final. A real break.
+- `Unrecon - no reference`: no reference could be extracted.
+
+When no `metabase_*.csv` is available for a day, the verification step is
+skipped and the output is identical to the pre-verification pipeline.

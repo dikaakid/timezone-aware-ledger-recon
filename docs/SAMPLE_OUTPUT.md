@@ -80,3 +80,35 @@ resolving two bank rows.
 | 2026-01 | 14 |
 | Resolved | 2 |
 | Consumed_Ledger_IDs | 125 |
+
+
+## Timezone-aware output (v0.2.0+)
+
+Two columns are added to the **Line Per Line** sheet:
+
+| column | example | meaning |
+|---|---|---|
+| `bank_posted_at_gmt7` | `2026-01-05 10:36:00 +0700` | Bank timestamp, explicit WIB offset |
+| `ledger_created_at_gmt7` | `2026-01-05 10:36:28 +0700` | Ledger timestamp, explicit WIB offset |
+
+Both are **strings**, not datetimes. This is deliberate: Excel cannot store a
+timezone offset on a datetime cell, so a real datetime column would silently
+drop the `+0700` on write. A string survives the round-trip.
+
+NaT values become an empty string, never `NaN`, so the sheet stays clean.
+
+### Metabase verification columns
+
+When a `metabase_YYYY-MM-DD.csv` file is present for a day, an additional
+column `Metabase_Status` appears on the **Line Per Line** sheet. It is only
+populated for `Unrecon` rows:
+
+| value | meaning |
+|---|---|
+| `Unrecon - pending GDS` | Present and final in Metabase; GDS export is behind |
+| `Unrecon - confirmed missing` | Absent or not final in Metabase; real break |
+| `Unrecon - no reference` | No reference extracted from the description |
+| *empty* | Row is `Recon`; verification not applicable |
+
+When no Metabase file exists for the day, the column is absent and the report
+is identical to the pre-verification pipeline.
