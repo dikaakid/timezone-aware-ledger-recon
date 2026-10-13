@@ -69,10 +69,11 @@ See [docs/SAMPLE_OUTPUT.md](docs/SAMPLE_OUTPUT.md) for real excerpts of the repo
 One day only:
 
     python -m ledger_recon.cli pair \
-        examples/dummy_data/statement_2026-10-12.csv \
-        examples/dummy_data/ledger_2026-10-12.csv \
-        examples/dummy_data/metabase_2026-10-12.csv \
-        --date 2026-10-12 -o report.xlsx
+        examples/dummy_data/statement_2026-01-05.csv \
+        examples/dummy_data/ledger_2026-01-05_2026-01-06.csv \
+        --date 2026-01-05 \
+        --metabase examples/dummy_data/metabase_2026-01-05.csv \
+        -o report.xlsx
 
 ## Input format
 
