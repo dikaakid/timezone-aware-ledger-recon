@@ -81,3 +81,38 @@ def test_column_rename_via_config():
     )
     valid, *_ = load_ledger(df, cfg)
     assert valid.loc[0, "ledger_id"] == "L1"
+
+
+def test_load_statement_flags_conflicting_offset_separately():
+    """A bank row with +00:00 offset gets a distinct reject reason."""
+    df = pd.DataFrame(
+        {
+            "txn_id": ["T1"],
+            "account_no": ["ACC1"],
+            "posted_at": ["2026-01-05 00:30:00+00:00"],
+            "description": ["TRF1234567890123456"],
+            "direction": ["CR"],
+            "amount": ["10000"],
+        }
+    )
+    valid, rejected, _, _ = load_statement(df, ReconConfig())
+    assert valid.empty
+    assert len(rejected) == 1
+    assert rejected["reject_reason"].iloc[0] == "conflicting offset in posted_at"
+
+
+def test_load_ledger_flags_conflicting_offset_separately():
+    """A ledger row with +00:00 offset gets a distinct reject reason."""
+    df = pd.DataFrame(
+        {
+            "ledger_id": ["L1"],
+            "reference": ["8800112345678901"],
+            "amount": ["10000"],
+            "created_at": ["2026-01-05 00:30:00+00:00"],
+            "status": ["SUCCESS"],
+        }
+    )
+    valid, rejected, _ = load_ledger(df, ReconConfig())
+    assert valid.empty
+    assert len(rejected) == 1
+    assert rejected["reject_reason"].iloc[0] == "conflicting offset in created_at"

@@ -17,7 +17,7 @@ import pandas as pd
 
 from .config import ReconConfig
 from .reference import ReferenceExtractor
-from .tz import localize
+from .tz import conflicting_offset_mask, localize
 
 STATEMENT_REQUIRED = ["txn_id", "account_no", "posted_at", "description", "direction", "amount"]
 LEDGER_REQUIRED = ["ledger_id", "reference", "amount", "created_at", "status"]
@@ -73,8 +73,10 @@ def load_statement(src, cfg: ReconConfig):
     amount = pd.to_numeric(df["amount"], errors="coerce")
 
     reason, flag = _flagger(df.index)
+    statement_conflict = conflicting_offset_mask(df["posted_at"], "statement", cfg.source_timezones)
     flag(df["txn_id"].isna(), "missing txn_id")
-    flag(posted.isna(), "invalid posted_at")
+    flag(posted.isna() & ~statement_conflict, "invalid posted_at")
+    flag(statement_conflict, "conflicting offset in posted_at")
     flag(amount.isna(), "invalid amount")
     flag(~df["direction"].isin(["CR", "DB"]), "invalid direction (expected CR or DB)")
     flag(df["txn_id"].duplicated(keep="first") & df["txn_id"].notna(), "duplicate txn_id")
@@ -109,9 +111,11 @@ def load_ledger(src, cfg: ReconConfig):
     amount = pd.to_numeric(df["amount"], errors="coerce")
 
     reason, flag = _flagger(df.index)
+    ledger_conflict = conflicting_offset_mask(df["created_at"], "ledger", cfg.source_timezones)
     flag(df["ledger_id"].isna(), "missing ledger_id")
     flag(df["reference"].isna(), "missing reference")
-    flag(created.isna(), "invalid created_at")
+    flag(created.isna() & ~ledger_conflict, "invalid created_at")
+    flag(ledger_conflict, "conflicting offset in created_at")
     flag(amount.isna(), "invalid amount")
     flag(df["ledger_id"].duplicated(keep="first") & df["ledger_id"].notna(), "duplicate ledger_id")
 

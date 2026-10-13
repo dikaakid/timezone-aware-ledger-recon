@@ -79,9 +79,42 @@ The assumption is documented here, not inferred from the data:
 - If this changes, change `source_timezones["metabase"]` in the config
   (or override it with `--config`). No code change is needed.
 
-If a future export mixes offsets inside the same file, `localize` will
-honour the explicit offset and only fall back to the configured timezone
-for naive rows. That is the only acceptable hybrid.
+If a row carries an explicit offset that differs from the source timezone,
+that row is rejected to NaT and reported with the reason
+`conflicting offset in <column>`. Trusting the string over the source
+would silently corrupt a row when upstream sends the wrong offset -- the
+exact failure this tool exists to prevent. An explicit offset that matches
+the source is accepted without change, and a naive row is still interpreted
+as the source timezone.
+
+## What happens to a conflicting offset
+
+A row whose explicit offset does not match the source is rejected, not
+silently converted. This is a deliberate choice: trusting the string
+would hide a real problem in the upstream export, and this tool exists
+to make that class of problem impossible to ignore.
+
+| Input | Source | Result |
+|---|---|---|
+| `2026-01-05 00:30:00` | WIB | Accepted; interpreted as WIB |
+| `2026-01-05 00:30:00+07:00` | WIB | Accepted; matches source |
+| `2026-01-05 00:30:00+00:00` | WIB | **Rejected** to NaT |
+| `2026-01-05 00:30:00` | UTC | Accepted; interpreted as UTC |
+| `2026-01-05 00:30:00+00:00` | UTC | Accepted; matches source |
+| `2026-01-05 00:30:00+07:00` | UTC | **Rejected** to NaT |
+
+Mixed columns (some naive, some aware with a conflicting offset) are
+handled per element: naive rows pass, conflicting rows become NaT, and
+the pipeline never crashes. This case was found by a test written
+specifically to try to break the assumption that `pd.to_datetime`
+returns an object array on mixed input. It does not: pandas raises
+`ValueError` on mixed timezones, and the loader must fall back to
+per-element parsing to keep the reject-and-report contract intact.
+
+Rejected rows appear in the **Rejected Rows** sheet with an explicit
+reason, so an operator can tell at a glance whether the problem is a
+malformed timestamp (`invalid <column>`) or a wrong timezone
+(`conflicting offset in <column>`).
 
 ## What we deliberately do NOT do
 
@@ -108,6 +141,10 @@ plausible mistakes:
 - An unparseable value must become `NaT`, never a valid date.
 - `strftime` on a WIB timestamp must end with `+0700`.
 - `strftime` on `NaT` must stay missing, never become a plausible date.
+- An explicit offset that conflicts with the source is rejected to NaT.
+- An explicit offset that matches the source is accepted without shift.
+- A column mixing naive and conflicting-aware rows parses per element
+  instead of crashing the pipeline.
 
 If a future change breaks any of these, the change is wrong, not the
 test.

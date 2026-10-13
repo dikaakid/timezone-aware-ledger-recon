@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "timezone-aware-ledger-recon"
-version = "1.0.0"
+version = "1.1.0"
 description = "Reconcile bank, ledger, and verification sources that disagree on timezone."
 readme = "README.md"
 requires-python = ">=3.10"

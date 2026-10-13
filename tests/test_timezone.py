@@ -78,3 +78,43 @@ def test_strftime_nat_stays_missing():
     out = localize(s, "statement")
     formatted = out.dt.strftime("%Y-%m-%d %H:%M:%S %z")
     assert pd.isna(formatted.iloc[0])
+
+
+# --- conflicting offsets ----------------------------------------------------
+
+
+def test_statement_with_conflicting_offset_is_rejected():
+    """A +00:00 offset on a WIB source is a silent corruption -> reject."""
+    s = pd.Series(["2026-01-05 00:30:00+00:00"])
+    out = localize(s, "statement")
+    assert pd.isna(out.iloc[0])
+
+
+def test_ledger_with_conflicting_offset_is_rejected():
+    s = pd.Series(["2026-01-05 00:30:00+00:00"])
+    out = localize(s, "ledger")
+    assert pd.isna(out.iloc[0])
+
+
+def test_metabase_with_conflicting_offset_is_rejected():
+    """Source is UTC; a +07:00 offset is a conflict, not a convenience."""
+    s = pd.Series(["2026-01-05 00:30:00+07:00"])
+    out = localize(s, "metabase")
+    assert pd.isna(out.iloc[0])
+
+
+def test_statement_with_matching_offset_is_accepted():
+    """An explicit +07:00 on a WIB source matches -> accept, no shift."""
+    s = pd.Series(["2026-01-05 00:30:00+07:00"])
+    out = localize(s, "statement")
+    assert not pd.isna(out.iloc[0])
+    assert out.dt.hour.iloc[0] == 0
+    assert out.dt.day.iloc[0] == 5
+
+
+def test_mixed_naive_and_conflicting_aware_in_one_column():
+    """Mixed input: naive is accepted, conflicting explicit offset is not."""
+    s = pd.Series(["2026-01-05 00:30:00", "2026-01-05 00:30:00+00:00"])
+    out = localize(s, "statement")
+    assert out.dt.hour.iloc[0] == 0
+    assert pd.isna(out.iloc[1])

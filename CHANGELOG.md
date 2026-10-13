@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-10-14
+
+### Changed
+- `localize()` now rejects an explicit offset that differs from the source
+  timezone, instead of silently converting it. A row like
+  `2026-01-05 00:30:00+00:00` on a WIB source is written to the
+  "Rejected Rows" sheet with the reason `conflicting offset in posted_at`,
+  rather than being accepted and shifted by 7 hours.
+
+### Added
+- `conflicting_offset_mask()` in `ledger_recon.tz`: identifies rows whose
+  explicit offset conflicts with the source, so the loaders can
+  distinguish "cannot parse timestamp" from "wrong timezone".
+- `docs/TIMEZONE.md` gains a "What happens to a conflicting offset"
+  section documenting the six input/source combinations and the
+  resulting behaviour.
+- Seven new tests covering:
+  - conflicting offset rejected (statement, ledger, metabase)
+  - matching offset accepted without shift
+  - mixed naive/conflicting-aware column handled per element
+  - loaders flag conflicting offset with a distinct reject reason
+
+### Fixed
+- `pd.to_datetime` raises `ValueError` on a column that mixes naive and
+  aware rows instead of returning an object array. `localize()` now falls
+  back to per-element parsing in that case, so the pipeline never crashes
+  on a mixed column and the reject-and-report contract still holds.
+
+### Compatibility
+- Input that was accepted before and was correct (naive rows, or aware
+  rows whose offset matches the source) is still accepted unchanged.
+- Input that was accepted before but was wrong (aware rows with a
+  conflicting offset) is now rejected and reported. This is the intended
+  fix, not a regression.
+
 ## [1.0.0] - 2026-10-13
 
 ### Added
