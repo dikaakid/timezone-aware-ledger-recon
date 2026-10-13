@@ -82,6 +82,50 @@ resolving two bank rows.
 | Consumed_Ledger_IDs | 125 |
 
 
+## Amount mismatch detection
+
+A bank row and a ledger row that share a reference but disagree on
+amount are kept in separate groups by the composite key
+`(reference, amount_minor, occurrence)`. Without help, they appear as
+two independent breaks: the bank row as `WAITING_LEDGER`, the ledger
+row as `LEDGER SUCCESS WITHOUT BANK CREDIT`. An operator following the
+first label would wait for a ledger row that will never arrive -- the
+row exists, but with a different amount.
+
+`detect_amount_mismatch()` recognises the pattern when, within one
+reference, there is exactly one Unrecon bank-only row and exactly one
+Unrecon ledger-only row. Both rows are then labelled with a distinct
+`case`:
+
+    AMOUNT MISMATCH (bank 15000000 vs ledger 15500000, delta +500000)
+
+and two new columns are populated:
+
+| column | type | value |
+|---|---|---|
+| `Amount_Mismatch` | bool | `True` on both rows of a detected pair |
+| `Amount_Delta` | Int64 (minor units) | signed `ledger - bank` difference |
+
+The delta is positive when the ledger claims more than the bank
+received, negative in the opposite case. The `case` label shows the
+same number with an explicit sign so a finance reader can see the
+direction at a glance.
+
+Example from the sample data on 2026-01-05:
+
+| reference | amount | bank_txn_id | ledger_id | Amount_Delta | case |
+|---|---|---|---|---|---|
+| 8800439498116277 | 150000 | B0105-0065 | | 500000 | AMOUNT MISMATCH (bank 15000000 vs ledger 15500000, delta +500000) \| username auto-filled from same-day reference history |
+| 8800439498116277 | 155000 | | L0105-0062 | 500000 | AMOUNT MISMATCH (bank 15000000 vs ledger 15500000, delta +500000) |
+
+The `summary` sheet reports `amount_mismatch_rows = 2` (both rows of
+the one pair found on this day).
+
+Rows flagged `Amount_Mismatch = True` are **not** sent to Metabase
+during verification. Sending them would only reinforce the wrong label:
+Metabase agrees with the bank side and would mark the bank row as
+`pending GDS` while the ledger row exists but with a different amount.
+
 ## Timezone-aware output (v0.2.0+)
 
 Two columns are added to the **Line Per Line** sheet:
@@ -108,7 +152,7 @@ populated for `Unrecon` rows:
 | `Unrecon - pending GDS` | Present and final in Metabase; GDS export is behind |
 | `Unrecon - confirmed missing` | Absent or not final in Metabase; real break |
 | `Unrecon - no reference` | No reference extracted from the description |
-| *empty* | Row is `Recon`; verification not applicable |
+| *empty* | Row is `Recon`, or `Amount_Mismatch = True`; verification not applicable |
 
 When no Metabase file exists for the day, the column is absent and the report
 is identical to the pre-verification pipeline.
@@ -126,19 +170,24 @@ like this:
 
 | day | pending GDS | confirmed missing | no reference |
 |---|---|---|---|
-| 2026-01-05 | 3 | 5 | 0 |
-| 2026-01-06 | 2 | 6 | 0 |
+| 2026-01-05 | 2 | 4 | 0 |
+| 2026-01-06 | 1 | 5 | 0 |
+
+Rows flagged `Amount_Mismatch = True` are not sent to Metabase (see
+"Amount mismatch detection" above); their `Metabase_Status` stays empty
+and they are not counted in this table. On 2026-01-05 that is 2 rows
+(the bank and ledger sides of the 150000 vs 155000 pair).
 
 What each number means on this sample:
 
-- **pending GDS** (3 on day 1): a bank-only row (77000), the bank-side of
-  an amount mismatch (150000), and the bank-side of a cross-midnight
-  payment (91000). All three exist and are final in Metabase, so they are
-  waiting for the GDS export, not real breaks.
-- **confirmed missing** (5 on day 1): one bank-only row whose Metabase
+- **pending GDS** (2 on day 1): a bank-only row (77000) and the
+  bank-side of a cross-midnight payment (91000). Both exist and are
+  final in Metabase, so they are waiting for the GDS export, not real
+  breaks.
+- **confirmed missing** (4 on day 1): one bank-only row whose Metabase
   status is PENDING rather than FINAL (78000), the fourth row of the
-  ambiguous 250000 group, and three ledger-only rows that have no bank
-  counterpart to join to.
+  ambiguous 250000 group, and two ledger-only rows (64000, 65000) that
+  have no bank counterpart to join to.
 - **no reference** (0): every unreconciled row on these days had an
   extractable reference, so no row was skipped at the first classification
   step.

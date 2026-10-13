@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-10-14
+
+### Added
+- `detect_amount_mismatch()` in `ledger_recon.core`: identifies a bank
+  row and a ledger row that share a reference but disagree on amount.
+- `Amount_Mismatch` (bool) and `Amount_Delta` (Int64, minor units)
+  columns in the Line Per Line sheet.
+- `amount_mismatch_rows` metric in `summarize()`.
+- A distinct `case` label for mismatched pairs:
+  `AMOUNT MISMATCH (bank 15000000 vs ledger 15500000, delta +500000)`.
+- 8 new tests (3 in test_core.py detection, 3 in test_core.py integration,
+  2 in test_metabase.py integration).
+
+### Changed
+- Metabase verification now skips rows flagged `Amount_Mismatch = True`.
+  Sending them to Metabase would only reinforce the wrong label:
+  Metabase agrees with the bank side and would mark the bank row as
+  `pending GDS` while the ledger row exists but with a different amount.
+
+### Fixed
+- A bank row and a ledger row with the same reference but different
+  amounts were previously labelled as two independent breaks
+  (`WAITING_LEDGER` and `LEDGER SUCCESS WITHOUT BANK CREDIT`). An
+  operator following the first label would wait for a ledger row that
+  will never arrive -- the row exists, but with a different amount. The
+  pair is now identified as a single amount mismatch and both rows
+  carry the same informative label.
+
+### Compatibility
+- `Match?` values are unchanged (`Recon` / `Unrecon`).
+- `WAITING_LEDGER` is still emitted for bank-only rows that have no
+  ledger counterpart at all.
+- Existing consumers that filter by `Match?` or by `case` substrings
+  (e.g. `"auto-filled"`) are unaffected.
+
+75 tests pass (was 70).
+
 ## [1.1.0] - 2026-10-14
 
 ### Changed

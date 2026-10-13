@@ -44,6 +44,8 @@ OUTPUT_COLUMNS = (
         "Routing_Check",
         "Investigation_Hint",
         "Pairing_Ambiguous",
+        "Amount_Mismatch",
+        "Amount_Delta",
         "bank_posted_at_gmt7",
         "ledger_created_at_gmt7",
     ]
@@ -271,6 +273,35 @@ def build_line_per_line(
     ]
     m["case"] = [((c or "") + n) or None for c, n in zip(cases, notes, strict=True)]
 
+    # Amount mismatch detection. The composite key (reference, amount_minor,
+    # occurrence) keeps a bank row and a ledger row with the same reference
+    # but different amounts in separate groups, so after the merge they look
+    # like two independent breaks. detect_amount_mismatch recognises the
+    # pattern and lets us replace the misleading case labels on both rows.
+    mismatch_mask, mismatch_delta = detect_amount_mismatch(m)
+    m["Amount_Mismatch"] = mismatch_mask
+    m["Amount_Delta"] = mismatch_delta
+
+    def _replace_case_for_mismatch(row):
+        if not row["Amount_Mismatch"]:
+            return row["case"]
+        delta = int(row["Amount_Delta"])
+        my_minor = int(row["amount_minor"])
+        if pd.notna(row["bank_txn_id"]):
+            bank_minor = my_minor
+            ledger_minor = my_minor + delta
+        else:
+            ledger_minor = my_minor
+            bank_minor = my_minor - delta
+        new_label = f"AMOUNT MISMATCH (bank {bank_minor} vs ledger {ledger_minor}, delta {delta:+d})"
+        old_case = row["case"] or ""
+        if " | " in old_case:
+            _, _, note = old_case.partition(" | ")
+            return f"{new_label} | {note}"
+        return new_label
+
+    m["case"] = [_replace_case_for_mismatch(row) for _, row in m.iterrows()]
+
     # Explicit GMT+7 string columns so a finance reader never has to guess
     # the timezone of a timestamp. These are strings, not datetimes, so
     # Excel preserves the "+0700" suffix instead of dropping it.
@@ -297,5 +328,6 @@ def summarize(lpl: pd.DataFrame, rejected: int = 0) -> dict:
         "ambiguous_rows": int(lpl["Pairing_Ambiguous"].notna().sum()),
         "wrong_routing": int(lpl["Routing_Check"].astype(str).str.startswith("WRONG").sum()),
         "weak_matches": int(lpl["Match_Quality"].astype(str).str.startswith("Weak").sum()),
+        "amount_mismatch_rows": int(lpl["Amount_Mismatch"].fillna(False).sum()),
         "rejected_rows": int(rejected),
     }

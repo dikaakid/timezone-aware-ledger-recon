@@ -61,10 +61,18 @@ def index_metabase(folder: Path) -> dict:
 def _attach_metabase_status(lpl: pd.DataFrame, mb: pd.DataFrame, cfg: ReconConfig) -> pd.DataFrame:
     """Merge Metabase verification status onto unreconciled rows.
 
-    Recon rows keep Metabase_Status = None. Only Unrecon rows are checked.
+    Recon rows keep Metabase_Status = None. Unrecon rows are checked
+    against Metabase, except amount-mismatch rows: those have already
+    been classified as a different kind of break (a bank row and a ledger
+    row that share a reference but disagree on amount). Running the
+    Metabase lookup on them would only reinforce the wrong label, because
+    Metabase typically agrees with the bank side and would mark the bank
+    row as "pending GDS" while the ledger row exists.
     """
     lpl = lpl.copy()
     unrecon_mask = lpl["Match?"] == "Unrecon"
+    if "Amount_Mismatch" in lpl.columns:
+        unrecon_mask = unrecon_mask & ~lpl["Amount_Mismatch"].fillna(False)
     if not unrecon_mask.any():
         lpl["Metabase_Status"] = None
         return lpl

@@ -31,6 +31,7 @@ def test_batch_on_sample_data_matches_documented_numbers(data, tmp_path):
         "ambiguous_rows": 4,
         "wrong_routing": 1,
         "weak_matches": 2,
+        "amount_mismatch_rows": 2,
         "rejected_rows": 3,
     }
     assert not (out / "recon_2026-01-07.xlsx").exists()  # incomplete statement skipped

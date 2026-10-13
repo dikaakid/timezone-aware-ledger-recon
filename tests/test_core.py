@@ -196,3 +196,37 @@ def test_detect_amount_mismatch_ignores_recon_rows():
     mask, delta = detect_amount_mismatch(df)
     assert mask.tolist() == [False]
     assert delta.isna().all()
+
+
+def test_amount_mismatch_replaces_case_label_on_both_rows(run):
+    """Both rows of an amount mismatch pair get the same informative case."""
+    r = run([bank("B1", T, amount=150000)], [led("L1", T, amount=155000)])
+    bank_row = r[r["bank_txn_id"] == "B1"].iloc[0]
+    ledger_row = r[r["ledger_id"] == "L1"].iloc[0]
+    assert bank_row["Amount_Mismatch"] and ledger_row["Amount_Mismatch"]
+    assert "AMOUNT MISMATCH" in bank_row["case"]
+    assert "AMOUNT MISMATCH" in ledger_row["case"]
+    assert "bank 15000000 vs ledger 15500000" in bank_row["case"]
+    assert "delta +500000" in bank_row["case"]
+    # Both rows share the same core label; the bank-side row may carry an
+    # extra " | username auto-filled ..." suffix when the ledger knows the
+    # owner. The ledger-side row does not need that suffix.
+    core_label = "AMOUNT MISMATCH (bank 15000000 vs ledger 15500000, delta +500000)"
+    assert bank_row["case"].startswith(core_label)
+    assert ledger_row["case"] == core_label
+
+
+def test_amount_mismatch_populates_delta_column(run):
+    """Amount_Delta holds the signed ledger - bank difference in minor units."""
+    r = run([bank("B1", T, amount=150000)], [led("L1", T, amount=155000)])
+    assert r["Amount_Delta"].notna().all()
+    assert (r["Amount_Delta"] == 500000).all()
+    assert summarize(r)["amount_mismatch_rows"] == 2
+
+
+def test_amount_mismatch_preserves_username_note(run):
+    """The auto-fill note is kept after the label is replaced."""
+    r = run([bank("B1", T, amount=150000)], [led("L1", T, amount=155000, user="merchant_9")])
+    bank_row = r[r["bank_txn_id"] == "B1"].iloc[0]
+    assert "AMOUNT MISMATCH" in bank_row["case"]
+    assert "auto-filled" in bank_row["case"]

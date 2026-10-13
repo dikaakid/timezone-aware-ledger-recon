@@ -124,3 +124,63 @@ def test_verify_empty_unrecon_returns_empty():
     out = verify_unrecon(pd.DataFrame(), mb, ReconConfig())
     assert out.empty
     assert "Metabase_Status" in out.columns
+
+
+# --- _attach_metabase_status integration ------------------------------------
+
+
+def test_attach_metabase_status_skips_amount_mismatch_rows():
+    """Rows already flagged as amount mismatch are not sent to Metabase.
+
+    Verifying them would only reinforce the wrong label: Metabase agrees
+    with the bank side and would mark the bank row as pending GDS, while
+    the ledger row exists but with a different amount.
+    """
+    from ledger_recon.pipeline import _attach_metabase_status
+
+    cfg = ReconConfig()
+    lpl = pd.DataFrame(
+        [
+            {
+                "reference": "8800112345678901",
+                "amount_minor": 15_000_000,
+                "occurrence": 1,
+                "Match?": "Unrecon",
+                "Amount_Mismatch": True,
+            },
+            {
+                "reference": "8800112345678901",
+                "amount_minor": 15_500_000,
+                "occurrence": 1,
+                "Match?": "Unrecon",
+                "Amount_Mismatch": True,
+            },
+        ]
+    )
+    mb = load_metabase(_df(status="FINAL"), cfg)
+
+    result = _attach_metabase_status(lpl, mb, cfg)
+    assert pd.isna(result["Metabase_Status"].iloc[0])
+    assert pd.isna(result["Metabase_Status"].iloc[1])
+
+
+def test_attach_metabase_status_still_verifies_normal_unrecon():
+    """A non-mismatch Unrecon row is still checked against Metabase."""
+    from ledger_recon.pipeline import _attach_metabase_status
+
+    cfg = ReconConfig()
+    lpl = pd.DataFrame(
+        [
+            {
+                "reference": "8800112345678901",
+                "amount_minor": 1_000_000,
+                "occurrence": 1,
+                "Match?": "Unrecon",
+                "Amount_Mismatch": False,
+            },
+        ]
+    )
+    mb = load_metabase(_df(status="FINAL"), cfg)
+
+    result = _attach_metabase_status(lpl, mb, cfg)
+    assert result["Metabase_Status"].iloc[0] == UNRECON_PENDING
