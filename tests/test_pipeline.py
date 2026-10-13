@@ -80,3 +80,38 @@ def test_config_json_rejects_unknown_keys(tmp_path):
     p.write_text('{"nope": 1}')
     with pytest.raises(ValueError, match="Unknown config keys"):
         ReconConfig.from_json(p)
+
+
+def test_readme_pair_command_example(tmp_path):
+    """The exact pair command from README must succeed.
+
+    This guards against a broken README example. If we ever move or rename
+    a sample file, this test fails and forces us to update both the test and
+    the README, keeping them in sync.
+
+    See README.md section "One day only".
+    """
+    from pathlib import Path
+
+    from ledger_recon.cli import main
+
+    root = Path(__file__).parent.parent
+    out = tmp_path / "report.xlsx"
+
+    rc = main(
+        [
+            "pair",
+            str(root / "examples/dummy_data/statement_2026-01-05.csv"),
+            str(root / "examples/dummy_data/ledger_2026-01-05_2026-01-06.csv"),
+            "--date",
+            "2026-01-05",
+            "--metabase",
+            str(root / "examples/dummy_data/metabase_2026-01-05.csv"),
+            "-o",
+            str(out),
+        ]
+    )
+
+    assert rc == 0
+    assert out.exists()
+    assert out.stat().st_size > 1000, "report.xlsx should not be empty"
