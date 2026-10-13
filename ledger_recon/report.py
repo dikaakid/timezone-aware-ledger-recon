@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .tz import to_naive_wib
+
 DEFAULT_HEADER_COLOR = "305496"
 
 
@@ -48,5 +50,5 @@ def write_report(sheets: dict, out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
         for name, df in sheets.items():
-            df.to_excel(writer, sheet_name=name[:31], index=False)
+            to_naive_wib(df).to_excel(writer, sheet_name=name[:31], index=False)
     style_workbook(out_path)

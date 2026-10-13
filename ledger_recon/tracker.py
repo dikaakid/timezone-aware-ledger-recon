@@ -26,6 +26,7 @@ import pandas as pd
 
 from .config import ReconConfig
 from .report import style_workbook
+from .tz import to_naive_wib, to_naive_wib_ts
 
 TRACKER_NAME = "unreconciled_tracker.xlsx"
 SHEET_RESOLVED = "Resolved"
@@ -69,7 +70,7 @@ def _save(sheets: dict, path: Path, keep: int) -> None:
     tmp = path.with_name(path.stem + ".tmp.xlsx")
     with pd.ExcelWriter(tmp, engine="openpyxl") as writer:
         for name, df in sheets.items():
-            df.to_excel(writer, sheet_name=name[:31], index=False)
+            to_naive_wib(df).to_excel(writer, sheet_name=name[:31], index=False)
     colors = {n: COLORS.get(n, PENDING_COLOR) for n in sheets}
     style_workbook(tmp, colors)
     commit_tracker(tmp, path, keep)
@@ -91,7 +92,7 @@ def _month(row) -> str:
     raw = row.get("bank_posted_at")
     if pd.isna(raw):
         raw = row.get("ledger_created_at")
-    ts = pd.to_datetime(raw, errors="coerce")
+    ts = to_naive_wib_ts(raw)
     return "unknown" if pd.isna(ts) else ts.strftime("%Y-%m")
 
 
@@ -102,7 +103,7 @@ def update_tracker(new_rows: pd.DataFrame, path: Path, cfg: ReconConfig | None =
         return
     new_rows = new_rows.copy()
     new_rows["_month"] = new_rows.apply(_month, axis=1)
-    new_rows = new_rows.astype("string")
+    new_rows = to_naive_wib(new_rows).astype("string")
 
     existing = _read(path)
     reserved = {k: v for k, v in existing.items() if k in RESERVED}
@@ -166,11 +167,11 @@ def recheck_tracker(path: Path, ledger_pool: pd.DataFrame, cfg: ReconConfig | No
                 via.append(None)
                 status.append("Cannot be rechecked (ledger-only row, no statement entry)")
                 continue
-            bank_day = pd.to_datetime(row["bank_posted_at"], errors="coerce")
+            bank_day = to_naive_wib_ts(row["bank_posted_at"])
             key = (row.get("reference"), int(float(row["amount_minor"])))
             chosen = None
             for i, (_lid, ldate) in enumerate(pool.get(key, [])):
-                gap = (pd.Timestamp(ldate).normalize() - bank_day.normalize()).days
+                gap = (to_naive_wib_ts(ldate).normalize() - bank_day.normalize()).days
                 if 0 <= gap <= cfg.recheck_max_days:
                     chosen = pool[key].pop(i)
                     break

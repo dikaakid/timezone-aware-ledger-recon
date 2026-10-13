@@ -17,6 +17,7 @@ import pandas as pd
 
 from .config import ReconConfig
 from .reference import ReferenceExtractor
+from .tz import localize
 
 STATEMENT_REQUIRED = ["txn_id", "account_no", "posted_at", "description", "direction", "amount"]
 LEDGER_REQUIRED = ["ledger_id", "reference", "amount", "created_at", "status"]
@@ -68,7 +69,7 @@ def load_statement(src, cfg: ReconConfig):
 
     df["account_no"] = df["account_no"].str.upper()
     df["direction"] = df["direction"].str.upper()
-    posted = pd.to_datetime(df["posted_at"], errors="coerce", format="ISO8601")
+    posted = localize(df["posted_at"], "statement", cfg.source_timezones)
     amount = pd.to_numeric(df["amount"], errors="coerce")
 
     reason, flag = _flagger(df.index)
@@ -104,7 +105,7 @@ def load_ledger(src, cfg: ReconConfig):
 
     df["reference"] = df["reference"].str.upper()
     df["status"] = df["status"].str.upper()
-    created = pd.to_datetime(df["created_at"], errors="coerce", format="ISO8601")
+    created = localize(df["created_at"], "ledger", cfg.source_timezones)
     amount = pd.to_numeric(df["amount"], errors="coerce")
 
     reason, flag = _flagger(df.index)
