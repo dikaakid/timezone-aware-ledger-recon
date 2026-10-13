@@ -68,6 +68,67 @@ def statement_looks_incomplete(statement, ledger, target_date: date, meta: dict,
     return bool(reasons), reasons
 
 
+def detect_amount_mismatch(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+    """Identify rows that form a single bank/ledger pair with the same
+    reference but different amounts.
+
+    The composite key (reference, amount_minor, occurrence) keeps these
+    two rows in separate groups, so after the outer merge they appear as
+    independent Unrecon rows: the bank row looks like it is waiting for a
+    ledger row, and the ledger row looks like it has no bank credit. Both
+    descriptions are wrong, and an operator following them would wait for
+    something that will never arrive. This helper recognises the pattern
+    and lets the caller label both rows as an amount mismatch.
+
+    A pair is detected only when, within one reference, there is exactly
+    one Unrecon bank-only row and exactly one Unrecon ledger-only row.
+    Any other combination (two bank-only, two ledger-only, etc.) is left
+    untouched because the pairing would be a guess.
+
+    Returns
+    -------
+    mask : pd.Series[bool]
+        True for both rows of every detected pair, False elsewhere.
+    delta : pd.Series[Int64]
+        Signed amount delta in minor units (ledger - bank) for the rows
+        in a pair; NA for all other rows.
+    """
+    mask = pd.Series(False, index=df.index, dtype=bool)
+    delta = pd.Series(pd.NA, index=df.index, dtype="Int64")
+
+    if df.empty:
+        return mask, delta
+
+    unrecon = df["Match?"] == "Unrecon"
+    if not unrecon.any():
+        return mask, delta
+
+    work = df.loc[unrecon]
+    has_bank = work["bank_txn_id"].notna()
+    has_ledger = work["ledger_id"].notna()
+
+    bank_only = work.loc[has_bank & ~has_ledger]
+    ledger_only = work.loc[~has_bank & has_ledger]
+
+    if bank_only.empty or ledger_only.empty:
+        return mask, delta
+
+    bank_counts = bank_only.groupby("reference").size()
+    ledger_counts = ledger_only.groupby("reference").size()
+    single_refs = bank_counts[bank_counts == 1].index.intersection(ledger_counts[ledger_counts == 1].index)
+
+    for ref in single_refs:
+        b_idx = bank_only.index[bank_only["reference"] == ref][0]
+        l_idx = ledger_only.index[ledger_only["reference"] == ref][0]
+        d = int(ledger_only.at[l_idx, "amount_minor"]) - int(bank_only.at[b_idx, "amount_minor"])
+        mask.at[b_idx] = True
+        mask.at[l_idx] = True
+        delta.at[b_idx] = d
+        delta.at[l_idx] = d
+
+    return mask, delta
+
+
 def build_line_per_line(
     statement: pd.DataFrame, ledger: pd.DataFrame, target_date: date, cfg: ReconConfig
 ) -> pd.DataFrame:

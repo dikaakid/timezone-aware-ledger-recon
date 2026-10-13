@@ -109,3 +109,90 @@ def test_incomplete_statement_guard(cfg):
 
 def test_empty_inputs_do_not_crash(run):
     assert run([], []).empty
+
+
+def test_detect_amount_mismatch_pairs_single_bank_and_ledger():
+    """One bank-only + one ledger-only with the same reference -> pair."""
+    from ledger_recon.core import detect_amount_mismatch
+
+    df = pd.DataFrame(
+        [
+            {
+                "reference": "R1",
+                "amount_minor": 150000,
+                "occurrence": 1,
+                "bank_txn_id": "B1",
+                "ledger_id": None,
+                "Match?": "Unrecon",
+            },
+            {
+                "reference": "R1",
+                "amount_minor": 155000,
+                "occurrence": 1,
+                "bank_txn_id": None,
+                "ledger_id": "L1",
+                "Match?": "Unrecon",
+            },
+        ]
+    )
+    mask, delta = detect_amount_mismatch(df)
+    assert mask.tolist() == [True, True]
+    assert delta.tolist() == [5000, 5000]
+
+
+def test_detect_amount_mismatch_ignores_ambiguous_multiples():
+    """Two bank-only + one ledger-only -> pairing would be a guess."""
+    from ledger_recon.core import detect_amount_mismatch
+
+    df = pd.DataFrame(
+        [
+            {
+                "reference": "R1",
+                "amount_minor": 150000,
+                "occurrence": 1,
+                "bank_txn_id": "B1",
+                "ledger_id": None,
+                "Match?": "Unrecon",
+            },
+            {
+                "reference": "R1",
+                "amount_minor": 152000,
+                "occurrence": 1,
+                "bank_txn_id": "B2",
+                "ledger_id": None,
+                "Match?": "Unrecon",
+            },
+            {
+                "reference": "R1",
+                "amount_minor": 155000,
+                "occurrence": 1,
+                "bank_txn_id": None,
+                "ledger_id": "L1",
+                "Match?": "Unrecon",
+            },
+        ]
+    )
+    mask, delta = detect_amount_mismatch(df)
+    assert mask.tolist() == [False, False, False]
+    assert delta.isna().all()
+
+
+def test_detect_amount_mismatch_ignores_recon_rows():
+    """Already-reconciled rows are never touched."""
+    from ledger_recon.core import detect_amount_mismatch
+
+    df = pd.DataFrame(
+        [
+            {
+                "reference": "R1",
+                "amount_minor": 150000,
+                "occurrence": 1,
+                "bank_txn_id": "B1",
+                "ledger_id": "L1",
+                "Match?": "Recon",
+            },
+        ]
+    )
+    mask, delta = detect_amount_mismatch(df)
+    assert mask.tolist() == [False]
+    assert delta.isna().all()
