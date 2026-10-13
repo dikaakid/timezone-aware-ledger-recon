@@ -5,6 +5,7 @@ occurrence index is computed after conversion, that the loader fails
 loudly on missing columns, and that verify_unrecon classifies rows by
 the (reference, amount_minor, occurrence) key.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -37,14 +38,17 @@ def _df(**overrides):
 
 def _unrecon(reference="8800112345678901", amount_minor=1_000_000, occurrence=1):
     """One unreconciled row, defaulting to the same amount as _df()."""
-    return pd.DataFrame({
-        "reference": [reference],
-        "amount_minor": [amount_minor],
-        "occurrence": [occurrence],
-    })
+    return pd.DataFrame(
+        {
+            "reference": [reference],
+            "amount_minor": [amount_minor],
+            "occurrence": [occurrence],
+        }
+    )
 
 
 # --- loader tests -----------------------------------------------------------
+
 
 def test_utc_timestamp_converted_to_wib():
     out = load_metabase(_df(), ReconConfig())
@@ -76,6 +80,7 @@ def test_column_rename_via_config():
 
 # --- verification tests -----------------------------------------------------
 
+
 def test_verify_marks_pending_when_present_in_metabase():
     mb = load_metabase(_df(status="FINAL"), ReconConfig())
     out = verify_unrecon(_unrecon(), mb, ReconConfig())
@@ -96,11 +101,13 @@ def test_verify_marks_missing_when_status_not_final():
 
 def test_verify_multi_use_va_uses_occurrence_not_reference_alone():
     """Two rows same reference+amount, only occurrence=1 exists in Metabase."""
-    unrecon = pd.DataFrame({
-        "reference": ["8800112345678901", "8800112345678901"],
-        "amount_minor": [1_000_000, 1_000_000],
-        "occurrence": [1, 2],
-    })
+    unrecon = pd.DataFrame(
+        {
+            "reference": ["8800112345678901", "8800112345678901"],
+            "amount_minor": [1_000_000, 1_000_000],
+            "occurrence": [1, 2],
+        }
+    )
     mb = load_metabase(_df(status="FINAL"), ReconConfig())
     out = verify_unrecon(unrecon, mb, ReconConfig())
     assert out["Metabase_Status"].tolist() == [UNRECON_PENDING, UNRECON_MISSING]

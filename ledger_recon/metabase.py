@@ -3,6 +3,7 @@
 Metabase reports timestamps in UTC (GMT+0). Every timestamp is converted
 to WIB (GMT+7) on load, so downstream code never sees a non-WIB value.
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -40,8 +41,7 @@ def load_metabase(src, cfg: ReconConfig) -> pd.DataFrame:
     missing = set(METABASE_REQUIRED) - set(df.columns)
     if missing:
         raise ValueError(
-            f"metabase is missing required columns: {sorted(missing)}. "
-            f"Expected: {sorted(METABASE_REQUIRED)}."
+            f"metabase is missing required columns: {sorted(missing)}. Expected: {sorted(METABASE_REQUIRED)}."
         )
 
     df = df.astype("string")
@@ -58,9 +58,7 @@ def load_metabase(src, cfg: ReconConfig) -> pd.DataFrame:
     amount = pd.to_numeric(df["amount"], errors="coerce")
     df["amount_minor"] = (amount * 10**cfg.amount_decimals).round().astype("Int64")
 
-    df = df.sort_values(["reference", "amount_minor", "created_at"], kind="stable").reset_index(
-        drop=True
-    )
+    df = df.sort_values(["reference", "amount_minor", "created_at"], kind="stable").reset_index(drop=True)
     df["occurrence"] = df.groupby(["reference", "amount_minor"]).cumcount() + 1
 
     return df
@@ -89,9 +87,7 @@ def verify_unrecon(
 
     mb = metabase.copy()
     mb_final = mb[mb["status"].str.upper() == cfg.metabase_final_status.upper()]
-    mb_keys = set(
-        zip(mb_final["reference"], mb_final["amount_minor"], mb_final["occurrence"], strict=True)
-    )
+    mb_keys = set(zip(mb_final["reference"], mb_final["amount_minor"], mb_final["occurrence"], strict=True))
 
     statuses: list[str] = []
     for _, row in out.iterrows():

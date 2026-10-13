@@ -3,6 +3,7 @@
 Each test proves one failure mode that a naive `pd.to_datetime` call would
 have missed. These are the tests that justify the module's existence.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -25,7 +26,7 @@ def test_ledger_naive_is_wib_not_double_converted():
     """GDS is already WIB; a naive timestamp must NOT shift by +7."""
     s = pd.Series(["2026-10-12 00:30:00"])
     out = localize(s, "ledger")
-    assert out.dt.hour.iloc[0] == 0   # not 07:30
+    assert out.dt.hour.iloc[0] == 0  # not 07:30
     assert out.dt.day.iloc[0] == 12
 
 

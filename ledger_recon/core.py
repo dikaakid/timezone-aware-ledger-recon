@@ -214,14 +214,10 @@ def build_line_per_line(
     # the timezone of a timestamp. These are strings, not datetimes, so
     # Excel preserves the "+0700" suffix instead of dropping it.
     m["bank_posted_at_gmt7"] = (
-        pd.to_datetime(m["bank_posted_at"], errors="coerce")
-        .dt.strftime("%Y-%m-%d %H:%M:%S %z")
-        .fillna("")
+        pd.to_datetime(m["bank_posted_at"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M:%S %z").fillna("")
     )
     m["ledger_created_at_gmt7"] = (
-        pd.to_datetime(m["ledger_created_at"], errors="coerce")
-        .dt.strftime("%Y-%m-%d %H:%M:%S %z")
-        .fillna("")
+        pd.to_datetime(m["ledger_created_at"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M:%S %z").fillna("")
     )
 
     return m[OUTPUT_COLUMNS]

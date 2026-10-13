@@ -9,6 +9,7 @@ Rules (learned from production):
 The module is intentionally tiny: it has one job and one test for each
 failure mode. Every conversion in the codebase goes through `localize()`.
 """
+
 from __future__ import annotations
 
 from zoneinfo import ZoneInfo

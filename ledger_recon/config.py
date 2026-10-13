@@ -61,11 +61,13 @@ class ReconConfig:
     # --- timezone -------------------------------------------------------
     # Strings, not ZoneInfo, so the dataclass stays JSON-serialisable.
     # Resolved to ZoneInfo inside ledger_recon.tz.localize().
-    source_timezones: dict = field(default_factory=lambda: {
-        "statement": "Asia/Jakarta",
-        "ledger": "Asia/Jakarta",
-        "metabase": "UTC",
-    })
+    source_timezones: dict = field(
+        default_factory=lambda: {
+            "statement": "Asia/Jakarta",
+            "ledger": "Asia/Jakarta",
+            "metabase": "UTC",
+        }
+    )
 
     # --- metabase (verification layer) ----------------------------------
     metabase_final_status: str = "FINAL"
