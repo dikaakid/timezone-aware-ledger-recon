@@ -112,3 +112,37 @@ populated for `Unrecon` rows:
 
 When no Metabase file exists for the day, the column is absent and the report
 is identical to the pre-verification pipeline.
+
+
+## Metabase verification in the sample data
+
+The sample data ships with two Metabase exports (`metabase_2026-01-05.csv`
+and `metabase_2026-01-06.csv`). Timestamps inside them are UTC, seven hours
+behind the WIB timestamps in the bank statements -- deliberately, so that
+the timezone normalisation is exercised end-to-end.
+
+Running the pipeline over the sample data classifies the unreconciled rows
+like this:
+
+| day | pending GDS | confirmed missing | no reference |
+|---|---|---|---|
+| 2026-01-05 | 3 | 5 | 0 |
+| 2026-01-06 | 2 | 6 | 0 |
+
+What each number means on this sample:
+
+- **pending GDS** (3 on day 1): a bank-only row (77000), the bank-side of
+  an amount mismatch (150000), and the bank-side of a cross-midnight
+  payment (91000). All three exist and are final in Metabase, so they are
+  waiting for the GDS export, not real breaks.
+- **confirmed missing** (5 on day 1): one bank-only row whose Metabase
+  status is PENDING rather than FINAL (78000), the fourth row of the
+  ambiguous 250000 group, and three ledger-only rows that have no bank
+  counterpart to join to.
+- **no reference** (0): every unreconciled row on these days had an
+  extractable reference, so no row was skipped at the first classification
+  step.
+
+These numbers are asserted indirectly through `tests/test_metabase.py`,
+which checks the classification rules on small hand-built frames rather
+than on the full sample data.

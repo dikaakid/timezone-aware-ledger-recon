@@ -11,7 +11,13 @@ import pandas as pd
 from .config import ReconConfig
 from .core import build_line_per_line, statement_looks_incomplete, summarize
 from .loaders import filter_window, load_ledger, load_statement
-from .metabase import load_metabase, verify_unrecon
+from .metabase import (
+    UNRECON_MISSING,
+    UNRECON_NO_REF,
+    UNRECON_PENDING,
+    load_metabase,
+    verify_unrecon,
+)
 from .report import account_pivot, summary_frame, write_report
 from .tracker import TRACKER_NAME, ensure_tracker_valid, recheck_tracker, record_consumed_ids, update_tracker
 
@@ -214,6 +220,15 @@ def run_batch(
             f"| ambiguous {s['ambiguous_rows']} | wrong routing {s['wrong_routing']} "
             f"| weak matches {s['weak_matches']}"
         )
+        lpl_cols = res["lpl"].columns
+        if "Metabase_Status" in lpl_cols:
+            counts = res["lpl"]["Metabase_Status"].value_counts()
+            log(
+                f"  Unrecon verified against Metabase: "
+                f"pending_gds {int(counts.get(UNRECON_PENDING, 0))} | "
+                f"confirmed_missing {int(counts.get(UNRECON_MISSING, 0))} | "
+                f"no_reference {int(counts.get(UNRECON_NO_REF, 0))}"
+            )
         log(f"  -> Saved: {out_path}")
         results[d] = s
         if not res["unrecon"].empty:

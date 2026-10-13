@@ -7,8 +7,9 @@ are chosen so that each feature of the engine has something to show:
   normal matches, a high-frequency reference, glued trailing digits, weak time
   matches, wrong routing, an ambiguous group (4 bank vs 3 ledger), bank-only
   and ledger-only rows, an amount mismatch, non-reference rows, an unknown-prefix
-  anomaly, rejected rows, failed ledger rows, a cross-midnight settlement, and
-  an incomplete (placeholder) statement day.
+  anomaly, rejected rows, failed ledger rows, a cross-midnight settlement, an
+  incomplete (placeholder) statement day, and a Metabase export in UTC that
+  contains some of the bank-only rows (some FINAL, some PENDING) but not others.
 
 Usage:  python examples/generate_sample_data.py
 """
@@ -32,7 +33,9 @@ PREFIX_ACCOUNT = {
 PREFIXES = list(PREFIX_ACCOUNT)
 STATEMENT_COLS = ["txn_id", "account_no", "posted_at", "description", "direction", "amount"]
 LEDGER_COLS = ["ledger_id", "reference", "amount", "created_at", "status", "username"]
+METABASE_COLS = ["trx_id", "reference", "amount", "created_at", "status"]
 FMT = "%Y-%m-%d %H:%M:%S"
+WIB_TO_UTC = timedelta(hours=7)  # WIB = UTC+7, so subtract 7h to get UTC
 
 
 class Day:
@@ -40,6 +43,7 @@ class Day:
         self.d, self.rng = d, rng
         self.statement: list[dict] = []
         self.ledger: list[dict] = []
+        self.metabase_rows: list[dict] = []  # rows that should also appear in Metabase
         self._used: set[str] = set()
 
     # -- helpers ---------------------------------------------------------
@@ -97,6 +101,10 @@ class Day:
         self.bank(ref, amount, when, **kw)
         self.led(ref_cell, amount, when + timedelta(seconds=delay_s), username=username)
 
+    def mark_metabase(self, ref, amount, when, status):
+        """Register a bank-only row that should also appear in the Metabase export."""
+        self.metabase_rows.append({"ref": ref, "amount": amount, "when": when, "status": status})
+
 
 def build_day(d: date, rng, cross_midnight_out: bool = False) -> Day:
     day = Day(d, rng)
@@ -128,20 +136,29 @@ def build_day(d: date, rng, cross_midnight_out: bool = False) -> Day:
     for k in range(3):
         day.led(a, 250000, day.at(200 + k * 10) + timedelta(seconds=10), username="merchant_3")
 
-    for k in range(2):  # 7. bank-only (waiting for ledger)
-        day.bank(day.ref(), 77000 + k * 1000, day.at(240 + k))
+    # 7. bank-only (waiting for ledger) -- two of them appear in Metabase:
+    #    k=0 -> FINAL   (verification: pending GDS)
+    #    k=1 -> PENDING (verification: confirmed missing, because not final)
+    for k in range(2):
+        ref = day.ref()
+        when = day.at(240 + k)
+        amount = 77000 + k * 1000
+        day.bank(ref, amount, when)
+        day.mark_metabase(ref, amount, when, "FINAL" if k == 0 else "PENDING")
 
     r = day.ref("88004")  # 8. amount mismatch
-    day.bank(r, 150000, day.at(250), channel="REF")
-    day.led(r, 155000, day.at(250) + timedelta(seconds=15), username="merchant_5")
+    when_mismatch = day.at(250)
+    day.bank(r, 150000, when_mismatch, channel="REF")
+    day.led(r, 155000, when_mismatch + timedelta(seconds=15), username="merchant_5")
+    day.mark_metabase(r, 150000, when_mismatch, "FINAL")
 
     for k in range(2):  # 9. ledger-only
         day.led(day.ref(), 64000 + k * 1000, day.at(260 + k), username="merchant_2")
 
-    day.statement.append(
+    day.statement.append(  # 10. non-reference rows
         {
             "txn_id": f"B{d:%m%d}-A001",
-            "account_no": "0100000001",  # 10. non-reference rows
+            "account_no": "0100000001",
             "posted_at": day.at(5).strftime(FMT),
             "description": "MONTHLY ADMIN FEE",
             "direction": "DB",
@@ -172,10 +189,10 @@ def build_day(d: date, rng, cross_midnight_out: bool = False) -> Day:
     for k in range(2):  # 11. failed ledger rows (excluded)
         day.led(day.ref(), 12000, day.at(270 + k), status="FAILED")
 
-    day.statement.append(
+    day.statement.append(  # 12. rejected rows
         {
             "txn_id": f"B{d:%m%d}-R001",
-            "account_no": "0100000001",  # 12. rejected rows
+            "account_no": "0100000001",
             "posted_at": day.at(8).strftime(FMT),
             "description": "TRF 88001000000000999 BAD",
             "direction": "CR",
@@ -192,6 +209,7 @@ def build_day(d: date, rng, cross_midnight_out: bool = False) -> Day:
         q = day.ref()
         when = datetime.combine(d, time(23, 59, 30))
         day.bank(q, 91000, when)
+        day.mark_metabase(q, 91000, when, "FINAL")
         day.cross = (q, 91000, datetime.combine(d + timedelta(days=1), time(0, 0, 20)))
     return day
 
@@ -201,6 +219,23 @@ def write_csv(path: Path, cols: list[str], rows: list[dict]) -> None:
         writer = csv.DictWriter(fh, fieldnames=cols)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def write_metabase(day_obj: Day, path: Path) -> None:
+    """Write a Metabase export for one day. Timestamps are converted WIB -> UTC."""
+    rows = []
+    for i, entry in enumerate(day_obj.metabase_rows, start=1):
+        utc_when = entry["when"] - WIB_TO_UTC
+        rows.append(
+            {
+                "trx_id": f"MB{day_obj.d:%m%d}-{i:04d}",
+                "reference": entry["ref"],
+                "amount": entry["amount"],
+                "created_at": utc_when.strftime(FMT),
+                "status": entry["status"],
+            }
+        )
+    write_csv(path, METABASE_COLS, rows)
 
 
 def main() -> None:
@@ -218,6 +253,8 @@ def main() -> None:
     write_csv(OUT / "statement_2026-01-05.csv", STATEMENT_COLS, day1.statement)
     write_csv(OUT / "statement_2026-01-06.csv", STATEMENT_COLS, day2.statement)
     write_csv(OUT / "ledger_2026-01-05_2026-01-06.csv", LEDGER_COLS, day1.ledger + day2.ledger)
+    write_metabase(day1, OUT / "metabase_2026-01-05.csv")
+    write_metabase(day2, OUT / "metabase_2026-01-06.csv")
 
     day3 = Day(d3, rng)  # incomplete statement day
     for acct in ("0100000001", "0100000002"):
@@ -236,6 +273,9 @@ def main() -> None:
     write_csv(OUT / "statement_2026-01-07.csv", STATEMENT_COLS, day3.statement)
     write_csv(OUT / "ledger_2026-01-07.csv", LEDGER_COLS, day3.ledger)
     print(f"Sample data written to {OUT}")
+    print("  - 3 statements, 2 ledgers, 2 metabase files")
+    print(f"  - metabase_2026-01-05.csv: {len(day1.metabase_rows)} rows")
+    print(f"  - metabase_2026-01-06.csv: {len(day2.metabase_rows)} rows")
 
 
 if __name__ == "__main__":

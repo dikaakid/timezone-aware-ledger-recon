@@ -52,12 +52,17 @@ nobody notices.
 
 Expected output on the sample data (verified by `tests/test_pipeline.py`):
 
-    === Processing 2026-10-12 ===
-      Line Per Line: 74 rows | Recon 62 | Unrecon 12 | ambiguous 4 | wrong routing 1 | weak matches 2
-      Unrecon verified against Metabase: pending_gds 3 | confirmed_missing 2 | no_reference 0
-    === Processing 2026-10-13 ===
-      [SKIPPED - STATEMENT LOOKS INCOMPLETE] 2026-10-13
-    === Recheck === resolved rows moved: 2 | still pending: 12
+    Found 3 statements, 2 ledger files, 2 metabase files.
+
+    === Processing 2026-01-05 ===
+      Line Per Line: 70 rows | Recon 62 | Unrecon 8 | ambiguous 4 | wrong routing 1 | weak matches 2
+      Unrecon verified against Metabase: pending_gds 3 | confirmed_missing 5 | no_reference 0
+    === Processing 2026-01-06 ===
+      Line Per Line: 70 rows | Recon 62 | Unrecon 8 | ambiguous 4 | wrong routing 1 | weak matches 2
+      Unrecon verified against Metabase: pending_gds 2 | confirmed_missing 6 | no_reference 0
+    === Processing 2026-01-07 ===
+      [SKIPPED - STATEMENT LOOKS INCOMPLETE] 2026-01-07
+    === Recheck === resolved rows moved: 2 | still pending: 14
 
 See [docs/SAMPLE_OUTPUT.md](docs/SAMPLE_OUTPUT.md) for real excerpts of the report.
 
