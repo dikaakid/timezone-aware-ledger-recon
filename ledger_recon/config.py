@@ -67,6 +67,10 @@ class ReconConfig:
         "metabase": "UTC",
     })
 
+    # --- metabase (verification layer) ----------------------------------
+    metabase_final_status: str = "FINAL"
+    metabase_columns: dict = field(default_factory=dict)
+
     # --- column renames: {"your column": "canonical column"} -------------
     statement_columns: dict = field(default_factory=dict)
     ledger_columns: dict = field(default_factory=dict)
