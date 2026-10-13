@@ -58,6 +58,15 @@ class ReconConfig:
     # a ledger row up to N days later
     tracker_backup_keep: int = 10
 
+    # --- timezone -------------------------------------------------------
+    # Strings, not ZoneInfo, so the dataclass stays JSON-serialisable.
+    # Resolved to ZoneInfo inside ledger_recon.tz.localize().
+    source_timezones: dict = field(default_factory=lambda: {
+        "statement": "Asia/Jakarta",
+        "ledger": "Asia/Jakarta",
+        "metabase": "UTC",
+    })
+
     # --- column renames: {"your column": "canonical column"} -------------
     statement_columns: dict = field(default_factory=dict)
     ledger_columns: dict = field(default_factory=dict)
