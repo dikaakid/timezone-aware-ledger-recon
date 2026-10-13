@@ -44,6 +44,8 @@ OUTPUT_COLUMNS = (
         "Routing_Check",
         "Investigation_Hint",
         "Pairing_Ambiguous",
+        "bank_posted_at_gmt7",
+        "ledger_created_at_gmt7",
     ]
 )
 
@@ -207,6 +209,20 @@ def build_line_per_line(
         c if (c is not None and not pd.isna(c)) else f for c, f in zip(current, fills, strict=True)
     ]
     m["case"] = [((c or "") + n) or None for c, n in zip(cases, notes, strict=True)]
+
+    # Explicit GMT+7 string columns so a finance reader never has to guess
+    # the timezone of a timestamp. These are strings, not datetimes, so
+    # Excel preserves the "+0700" suffix instead of dropping it.
+    m["bank_posted_at_gmt7"] = (
+        pd.to_datetime(m["bank_posted_at"], errors="coerce")
+        .dt.strftime("%Y-%m-%d %H:%M:%S %z")
+        .fillna("")
+    )
+    m["ledger_created_at_gmt7"] = (
+        pd.to_datetime(m["ledger_created_at"], errors="coerce")
+        .dt.strftime("%Y-%m-%d %H:%M:%S %z")
+        .fillna("")
+    )
 
     return m[OUTPUT_COLUMNS]
 

@@ -61,3 +61,19 @@ def test_unparseable_becomes_nat():
     s = pd.Series(["not a date", "", None])
     out = localize(s, "statement")
     assert out.isna().all()
+
+
+def test_strftime_includes_wib_offset():
+    """Aware WIB timestamps format with +0700 so Excel shows the offset."""
+    s = pd.Series(["2026-01-05 09:00:00"])
+    out = localize(s, "statement")
+    formatted = out.dt.strftime("%Y-%m-%d %H:%M:%S %z")
+    assert formatted.iloc[0] == "2026-01-05 09:00:00 +0700"
+
+
+def test_strftime_nat_stays_missing():
+    """NaT must stay missing after strftime -- never become a plausible date."""
+    s = pd.Series(["not a date"])
+    out = localize(s, "statement")
+    formatted = out.dt.strftime("%Y-%m-%d %H:%M:%S %z")
+    assert pd.isna(formatted.iloc[0])
