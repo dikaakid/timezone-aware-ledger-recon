@@ -385,3 +385,110 @@ def test_guard_does_not_fire_on_one_incidental_early_row():
     incomplete, reasons = metabase_export_looks_incomplete(metabase, ledger, date(2026, 1, 6), ReconConfig())
     assert incomplete is False
     assert reasons == []
+
+
+# --- _classify_mismatch_verdict unit tests ----------------------------------
+
+
+def _mb_row(reference, occurrence, amount_minor):
+    """Minimal Metabase row for the verdict tests (three columns only)."""
+    return {
+        "reference": reference,
+        "occurrence": occurrence,
+        "amount_minor": amount_minor,
+    }
+
+
+def test_classify_verdict_bank_matches_metabase():
+    """Metabase holds the bank amount -> the ledger recorded wrong figures."""
+    from ledger_recon.metabase import (
+        VERDICT_BANK_MATCHES,
+        _classify_mismatch_verdict,
+    )
+
+    mb = pd.DataFrame([_mb_row("R1", 1, 15_000_000)])
+    v = _classify_mismatch_verdict(
+        reference="R1",
+        occurrence=1,
+        bank_minor=15_000_000,
+        ledger_minor=15_500_000,
+        metabase=mb,
+    )
+    assert v == VERDICT_BANK_MATCHES
+
+
+def test_classify_verdict_ledger_matches_metabase():
+    """Metabase holds the ledger amount -> the bank received something else."""
+    from ledger_recon.metabase import (
+        VERDICT_LEDGER_MATCHES,
+        _classify_mismatch_verdict,
+    )
+
+    mb = pd.DataFrame([_mb_row("R1", 1, 15_500_000)])
+    v = _classify_mismatch_verdict(
+        reference="R1",
+        occurrence=1,
+        bank_minor=15_000_000,
+        ledger_minor=15_500_000,
+        metabase=mb,
+    )
+    assert v == VERDICT_LEDGER_MATCHES
+
+
+def test_classify_verdict_both_differ():
+    """Metabase has the reference but neither amount -> investigate."""
+    from ledger_recon.metabase import (
+        VERDICT_BOTH_DIFFER,
+        _classify_mismatch_verdict,
+    )
+
+    mb = pd.DataFrame([_mb_row("R1", 1, 14_000_000)])
+    v = _classify_mismatch_verdict(
+        reference="R1",
+        occurrence=1,
+        bank_minor=15_000_000,
+        ledger_minor=15_500_000,
+        metabase=mb,
+    )
+    assert v == VERDICT_BOTH_DIFFER
+
+
+def test_classify_verdict_both_match_metabase():
+    """Metabase holds both amounts -> investigate a duplicate."""
+    from ledger_recon.metabase import (
+        VERDICT_BOTH_MATCH,
+        _classify_mismatch_verdict,
+    )
+
+    mb = pd.DataFrame(
+        [
+            _mb_row("R1", 1, 15_000_000),
+            _mb_row("R1", 1, 15_500_000),
+        ]
+    )
+    v = _classify_mismatch_verdict(
+        reference="R1",
+        occurrence=1,
+        bank_minor=15_000_000,
+        ledger_minor=15_500_000,
+        metabase=mb,
+    )
+    assert v == VERDICT_BOTH_MATCH
+
+
+def test_classify_verdict_no_metabase_data():
+    """Metabase has no row with this reference -> nothing to arbitrate."""
+    from ledger_recon.metabase import (
+        VERDICT_NO_DATA,
+        _classify_mismatch_verdict,
+    )
+
+    mb = pd.DataFrame([_mb_row("R2", 1, 15_000_000)])
+    v = _classify_mismatch_verdict(
+        reference="R1",
+        occurrence=1,
+        bank_minor=15_000_000,
+        ledger_minor=15_500_000,
+        metabase=mb,
+    )
+    assert v == VERDICT_NO_DATA

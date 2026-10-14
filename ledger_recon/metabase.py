@@ -142,6 +142,68 @@ def metabase_export_looks_incomplete(
     return False, []
 
 
+# Mismatch verdicts. When a bank row and a ledger row share a reference
+# but disagree on amount, Metabase can arbitrate which side is right.
+# See _classify_mismatch_verdict for the mapping.
+VERDICT_BANK_MATCHES = "bank_matches_metabase"
+VERDICT_LEDGER_MATCHES = "ledger_matches_metabase"
+VERDICT_BOTH_DIFFER = "both_differ"
+VERDICT_BOTH_MATCH = "both_match_metabase"
+VERDICT_NO_DATA = "no_metabase_data"
+
+
+def _classify_mismatch_verdict(
+    reference: str,
+    occurrence: int,
+    bank_minor: int,
+    ledger_minor: int,
+    metabase: pd.DataFrame,
+) -> str:
+    """Classify a bank/ledger mismatch pair against Metabase.
+
+    A mismatch pair shares a reference but disagrees on amount. Metabase
+    can arbitrate which side is right:
+
+      - Metabase holds the bank amount on this occurrence -> the ledger
+        recorded the wrong figure (VERDICT_BANK_MATCHES)
+      - Metabase holds the ledger amount on this occurrence -> the bank
+        received a different figure (VERDICT_LEDGER_MATCHES)
+      - Metabase holds both amounts on this occurrence -> investigate
+        whether Metabase duplicated the row (VERDICT_BOTH_MATCH)
+      - Metabase holds the reference but neither amount -> the difference
+        is on all three systems (VERDICT_BOTH_DIFFER)
+      - Metabase has no row with this reference -> nothing to arbitrate
+        against (VERDICT_NO_DATA)
+
+    The occurrence parameter matters: a Metabase row with the same
+    reference and amount but a different occurrence is a different
+    transaction, not the counterpart of this pair.
+
+    The caller is expected to pass Metabase rows already normalised to
+    WIB (see load_metabase). The helper reads only reference, occurrence
+    and amount_minor, so it does not care how those rows arrived.
+    """
+    if metabase.empty:
+        return VERDICT_NO_DATA
+
+    by_ref = metabase[metabase["reference"] == reference]
+    if by_ref.empty:
+        return VERDICT_NO_DATA
+
+    by_ref_occ = by_ref[by_ref["occurrence"] == occurrence]
+
+    bank_in_mb = not by_ref_occ[by_ref_occ["amount_minor"] == bank_minor].empty
+    ledger_in_mb = not by_ref_occ[by_ref_occ["amount_minor"] == ledger_minor].empty
+
+    if bank_in_mb and ledger_in_mb:
+        return VERDICT_BOTH_MATCH
+    if bank_in_mb:
+        return VERDICT_BANK_MATCHES
+    if ledger_in_mb:
+        return VERDICT_LEDGER_MATCHES
+    return VERDICT_BOTH_DIFFER
+
+
 def verify_unrecon(
     unrecon_rows: pd.DataFrame,
     metabase: pd.DataFrame,
