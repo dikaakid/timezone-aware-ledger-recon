@@ -21,9 +21,14 @@ htmlcov/
 
 # Run output and local config (never commit real data or secrets)
 output/
+output_*/
 tracker_backups/
 *.xlsx
 .env
+
+# Scratch files from review/analysis sessions
+_*.txt
+_*.log
 
 # OS
 .DS_Store

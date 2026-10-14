@@ -132,6 +132,115 @@ def record_consumed_ids(ids: list, path: Path, cfg: ReconConfig | None = None) -
     _save(sheets, path, cfg.tracker_backup_keep)
 
 
+def _find_symmetric_pairs(sheets: dict, cfg: ReconConfig) -> list[dict]:
+    """Find bank-only + ledger-only pending pairs within a tracker.
+
+    A pair is detected only when the same (reference, amount_minor) has
+    exactly one bank-only pending row and exactly one ledger-only pending
+    row across all month sheets, and the two dates differ by at most
+    cfg.recheck_max_days in either direction. This closes the case where
+    the bank posts after the ledger: forward-only Pass 1 in recheck_tracker
+    requires the ledger date to be >= the bank date and cannot resolve it,
+    so the two rows stay open forever.
+
+    Rows flagged Amount_Mismatch = True are skipped -- they have their own
+    classification and are not waiting for a counterpart. If the column is
+    absent (a tracker written by an older release) every row is considered,
+    so a mismatch from before v1.2.0 can still resolve.
+
+    Parameters
+    ----------
+    sheets : dict
+        Month sheets as returned by _read, keyed by "YYYY-MM". The
+        reserved sheets (Resolved, Consumed_Ledger_IDs) must not be
+        present. All values are strings or NaN, matching read_excel with
+        dtype=str.
+    cfg : ReconConfig
+        Uses cfg.recheck_max_days.
+
+    Returns
+    -------
+    list of dict
+        One entry per pair with keys: bank_month, bank_idx,
+        ledger_month, ledger_idx, ledger_id, gap_days. The gap is
+        signed: ledger_date - bank_date.
+    """
+    flat: list[dict] = []
+    for month, df in sheets.items():
+        for idx, row in df.iterrows():
+            bank_id = row.get("bank_txn_id")
+            ledger_id = row.get("ledger_id")
+            has_bank = pd.notna(bank_id) and str(bank_id).strip() != ""
+            has_ledger = pd.notna(ledger_id) and str(ledger_id).strip() != ""
+
+            if has_bank == has_ledger:
+                continue
+
+            am = row.get("Amount_Mismatch")
+            if pd.notna(am) and str(am).strip().lower() in ("true", "1"):
+                continue
+
+            ref = row.get("reference")
+            if ref is None or pd.isna(ref):
+                continue
+
+            amt = row.get("amount_minor")
+            if amt is None or pd.isna(amt):
+                continue
+
+            ts_col = "bank_posted_at" if has_bank else "ledger_created_at"
+            flat.append(
+                {
+                    "month": month,
+                    "idx": int(idx),
+                    "side": "bank" if has_bank else "ledger",
+                    "reference": str(ref),
+                    "amount_minor": str(amt),
+                    "ts": row.get(ts_col),
+                    "ledger_id": str(ledger_id) if has_ledger else None,
+                }
+            )
+
+    if not flat:
+        return []
+
+    flat_df = pd.DataFrame(flat)
+    banks = flat_df[flat_df["side"] == "bank"]
+    ledgers = flat_df[flat_df["side"] == "ledger"]
+    if banks.empty or ledgers.empty:
+        return []
+
+    b_counts = banks.groupby(["reference", "amount_minor"]).size()
+    l_counts = ledgers.groupby(["reference", "amount_minor"]).size()
+    single_keys = b_counts[b_counts == 1].index.intersection(l_counts[l_counts == 1].index)
+
+    pairs: list[dict] = []
+    for key in single_keys:
+        ref, amt = key
+        b_meta = banks[(banks["reference"] == ref) & (banks["amount_minor"] == amt)].iloc[0]
+        l_meta = ledgers[(ledgers["reference"] == ref) & (ledgers["amount_minor"] == amt)].iloc[0]
+
+        b_ts = to_naive_wib_ts(b_meta["ts"])
+        l_ts = to_naive_wib_ts(l_meta["ts"])
+        if pd.isna(b_ts) or pd.isna(l_ts):
+            continue
+
+        gap = int((pd.Timestamp(l_ts).normalize() - pd.Timestamp(b_ts).normalize()).days)
+        if abs(gap) <= cfg.recheck_max_days:
+            pairs.append(
+                {
+                    "bank_month": b_meta["month"],
+                    "bank_idx": int(b_meta["idx"]),
+                    "ledger_month": l_meta["month"],
+                    "ledger_idx": int(l_meta["idx"]),
+                    "ledger_id": l_meta["ledger_id"],
+                    "gap_days": gap,
+                }
+            )
+
+    return pairs
+
+
 def recheck_tracker(path: Path, ledger_pool: pd.DataFrame, cfg: ReconConfig | None = None) -> dict:
     """Re-test pending bank rows against ledger rows that have arrived since.
 
@@ -156,6 +265,47 @@ def recheck_tracker(path: Path, ledger_pool: pd.DataFrame, cfg: ReconConfig | No
     new_consumed: list[str] = []
     resolved_frames: list[pd.DataFrame] = []
     pending_out: dict = {}
+
+    # Pass 0: pair bank-only and ledger-only pending rows within the
+    # tracker itself. This closes the case where the bank posts after the
+    # ledger: forward-only Pass 1 requires the ledger date to be at or
+    # after the bank date and cannot resolve a pair where the ledger came
+    # first. See _find_symmetric_pairs for the pairing rule.
+    pairs = _find_symmetric_pairs(sheets, cfg)
+    if pairs:
+        drop_by_month: dict = {}
+        for pair in pairs:
+            bank_month = pair["bank_month"]
+            bank_idx = pair["bank_idx"]
+            ledger_month = pair["ledger_month"]
+            ledger_idx = pair["ledger_idx"]
+            ledger_id = pair["ledger_id"]
+
+            b_dict = sheets[bank_month].loc[bank_idx].to_dict()
+            b_dict["Recheck_Status"] = "Resolved"
+            b_dict["Resolved_Ledger_ID"] = ledger_id
+            b_dict["Resolved_At"] = now
+            b_dict["Last_Rechecked"] = now
+            resolved_frames.append(pd.DataFrame([b_dict]))
+
+            l_dict = sheets[ledger_month].loc[ledger_idx].to_dict()
+            l_dict["Recheck_Status"] = "Resolved"
+            l_dict["Resolved_Ledger_ID"] = ledger_id
+            l_dict["Resolved_At"] = now
+            l_dict["Last_Rechecked"] = now
+            resolved_frames.append(pd.DataFrame([l_dict]))
+
+            new_consumed.append(ledger_id)
+            drop_by_month.setdefault(bank_month, []).append(bank_idx)
+            drop_by_month.setdefault(ledger_month, []).append(ledger_idx)
+
+        # Drop after collecting every pair. Descending index order keeps
+        # the remaining indices valid when both rows are in one sheet.
+        for month, indices in drop_by_month.items():
+            df = sheets[month]
+            for idx in sorted(set(indices), reverse=True):
+                df = df.drop(idx)
+            sheets[month] = df.reset_index(drop=True)
 
     # Pass 1: bank-side pending rows look for a ledger row.
     for month, df in sheets.items():
