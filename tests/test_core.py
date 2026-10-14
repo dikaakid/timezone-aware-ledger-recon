@@ -3,6 +3,7 @@ from datetime import date
 import pandas as pd
 from conftest import DAY, L_COLS, REF2, S_COLS, bank, led
 
+from ledger_recon.config import ReconConfig
 from ledger_recon.core import statement_looks_incomplete, summarize
 from ledger_recon.loaders import filter_window, load_ledger, load_statement
 
@@ -123,6 +124,8 @@ def test_detect_amount_mismatch_pairs_single_bank_and_ledger():
                 "occurrence": 1,
                 "bank_txn_id": "B1",
                 "ledger_id": None,
+                "bank_posted_at": "2026-01-05 10:00:00",
+                "ledger_created_at": None,
                 "Match?": "Unrecon",
             },
             {
@@ -131,11 +134,13 @@ def test_detect_amount_mismatch_pairs_single_bank_and_ledger():
                 "occurrence": 1,
                 "bank_txn_id": None,
                 "ledger_id": "L1",
+                "bank_posted_at": None,
+                "ledger_created_at": "2026-01-05 10:15:00",
                 "Match?": "Unrecon",
             },
         ]
     )
-    mask, delta = detect_amount_mismatch(df)
+    mask, delta = detect_amount_mismatch(df, ReconConfig())
     assert mask.tolist() == [True, True]
     assert delta.tolist() == [5000, 5000]
 
@@ -172,7 +177,7 @@ def test_detect_amount_mismatch_ignores_ambiguous_multiples():
             },
         ]
     )
-    mask, delta = detect_amount_mismatch(df)
+    mask, delta = detect_amount_mismatch(df, ReconConfig())
     assert mask.tolist() == [False, False, False]
     assert delta.isna().all()
 
@@ -193,7 +198,7 @@ def test_detect_amount_mismatch_ignores_recon_rows():
             },
         ]
     )
-    mask, delta = detect_amount_mismatch(df)
+    mask, delta = detect_amount_mismatch(df, ReconConfig())
     assert mask.tolist() == [False]
     assert delta.isna().all()
 
@@ -232,3 +237,96 @@ def test_amount_mismatch_preserves_username_note(run):
     bank_row = r[r["bank_txn_id"] == "B1"].iloc[0]
     assert "AMOUNT MISMATCH" in bank_row["case"]
     assert "auto-filled" in bank_row["case"]
+
+
+def test_detect_amount_mismatch_skips_high_frequency_reference():
+    """A reference used more than the threshold is not paired.
+
+    On a multi-use VA one bank-only and one ledger-only row can be two
+    unrelated transactions rather than a single mismatch. The frequency
+    guard must leave them untouched.
+    """
+    from ledger_recon.core import detect_amount_mismatch
+
+    cfg = ReconConfig()
+    assert cfg.high_frequency_threshold == 5
+
+    # Six Recon rows with R1 to push the frequency above the threshold,
+    # plus the one bank-only and one ledger-only row to test the guard.
+    rows = [
+        {
+            "reference": "R1",
+            "amount_minor": 100000,
+            "occurrence": i,
+            "bank_txn_id": f"BX{i}",
+            "ledger_id": f"LX{i}",
+            "bank_posted_at": "2026-01-05 09:00:00",
+            "ledger_created_at": "2026-01-05 09:00:30",
+            "Match?": "Recon",
+        }
+        for i in range(1, 7)
+    ]
+    rows.append(
+        {
+            "reference": "R1",
+            "amount_minor": 150000,
+            "occurrence": 1,
+            "bank_txn_id": "B1",
+            "ledger_id": None,
+            "bank_posted_at": "2026-01-05 10:00:00",
+            "ledger_created_at": None,
+            "Match?": "Unrecon",
+        }
+    )
+    rows.append(
+        {
+            "reference": "R1",
+            "amount_minor": 155000,
+            "occurrence": 1,
+            "bank_txn_id": None,
+            "ledger_id": "L1",
+            "bank_posted_at": None,
+            "ledger_created_at": "2026-01-05 10:15:00",
+            "Match?": "Unrecon",
+        }
+    )
+    df = pd.DataFrame(rows)
+    mask, delta = detect_amount_mismatch(df, cfg)
+    assert mask.tolist() == [False] * 6 + [False, False]
+    assert delta.isna().all()
+
+
+def test_detect_amount_mismatch_skips_large_time_gap():
+    """Bank and ledger further apart than mismatch_max_minutes are not paired."""
+    from ledger_recon.core import detect_amount_mismatch
+
+    cfg = ReconConfig()
+    assert cfg.mismatch_max_minutes == 60
+
+    df = pd.DataFrame(
+        [
+            {
+                "reference": "R1",
+                "amount_minor": 150000,
+                "occurrence": 1,
+                "bank_txn_id": "B1",
+                "ledger_id": None,
+                "bank_posted_at": "2026-01-05 06:00:00",
+                "ledger_created_at": None,
+                "Match?": "Unrecon",
+            },
+            {
+                "reference": "R1",
+                "amount_minor": 155000,
+                "occurrence": 1,
+                "bank_txn_id": None,
+                "ledger_id": "L1",
+                "bank_posted_at": None,
+                "ledger_created_at": "2026-01-05 22:00:00",
+                "Match?": "Unrecon",
+            },
+        ]
+    )
+    mask, delta = detect_amount_mismatch(df, cfg)
+    assert mask.tolist() == [False, False]
+    assert delta.isna().all()

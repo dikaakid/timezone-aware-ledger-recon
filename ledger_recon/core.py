@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 
 from .config import ReconConfig
+from .tz import to_naive_wib_ts
 
 KEYS = ["reference", "amount_minor", "occurrence"]
 
@@ -71,7 +72,7 @@ def statement_looks_incomplete(statement, ledger, target_date: date, meta: dict,
     return bool(reasons), reasons
 
 
-def detect_amount_mismatch(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+def detect_amount_mismatch(df: pd.DataFrame, cfg: ReconConfig) -> tuple[pd.Series, pd.Series]:
     """Identify rows that form a single bank/ledger pair with the same
     reference but different amounts.
 
@@ -87,6 +88,23 @@ def detect_amount_mismatch(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     one Unrecon bank-only row and exactly one Unrecon ledger-only row.
     Any other combination (two bank-only, two ledger-only, etc.) is left
     untouched because the pairing would be a guess.
+
+    Two additional guards prevent a false positive on multi-use virtual
+    accounts:
+
+      * frequency: the reference must be used at most
+        cfg.high_frequency_threshold times across bank and ledger rows on
+        this day. A reference used more often is the signature of a VA
+        reused many times, and one bank-only plus one ledger-only row is
+        more likely to be two unmatched transactions than one mismatch.
+
+      * time gap: the bank timestamp and the ledger timestamp must be
+        within cfg.mismatch_max_minutes of each other. The two sides of a
+        real mismatch describe the same event and are normally minutes
+        apart; a gap of hours suggests unrelated activity that happens to
+        share a reference.
+
+    Both thresholds are configuration, not constants.
 
     Returns
     -------
@@ -119,10 +137,28 @@ def detect_amount_mismatch(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     bank_counts = bank_only.groupby("reference").size()
     ledger_counts = ledger_only.groupby("reference").size()
     single_refs = bank_counts[bank_counts == 1].index.intersection(ledger_counts[ledger_counts == 1].index)
+    if len(single_refs) == 0:
+        return mask, delta
+
+    # Frequency over the full frame (bank + ledger), consistent with the
+    # freq series used for Investigation_Hint below.
+    freq = df.groupby("reference").size()
 
     for ref in single_refs:
+        if int(freq.get(ref, 0)) > cfg.high_frequency_threshold:
+            continue
+
         b_idx = bank_only.index[bank_only["reference"] == ref][0]
         l_idx = ledger_only.index[ledger_only["reference"] == ref][0]
+
+        bank_ts = to_naive_wib_ts(bank_only.at[b_idx, "bank_posted_at"])
+        ledger_ts = to_naive_wib_ts(ledger_only.at[l_idx, "ledger_created_at"])
+        if pd.isna(bank_ts) or pd.isna(ledger_ts):
+            continue
+        gap_minutes = abs((bank_ts - ledger_ts).total_seconds()) / 60
+        if gap_minutes > cfg.mismatch_max_minutes:
+            continue
+
         d = int(ledger_only.at[l_idx, "amount_minor"]) - int(bank_only.at[b_idx, "amount_minor"])
         mask.at[b_idx] = True
         mask.at[l_idx] = True
@@ -279,7 +315,7 @@ def build_line_per_line(
     # but different amounts in separate groups, so after the merge they look
     # like two independent breaks. detect_amount_mismatch recognises the
     # pattern and lets us replace the misleading case labels on both rows.
-    mismatch_mask, mismatch_delta = detect_amount_mismatch(m)
+    mismatch_mask, mismatch_delta = detect_amount_mismatch(m, cfg)
     m["Amount_Mismatch"] = mismatch_mask
     m["Amount_Delta_Minor"] = mismatch_delta
     m["Amount_Delta"] = mismatch_delta.astype("Float64") / (10**cfg.amount_decimals)

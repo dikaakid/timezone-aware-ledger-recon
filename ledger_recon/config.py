@@ -47,6 +47,14 @@ class ReconConfig:
     ledger_success_status: str = "SUCCESS"
     ledger_window_days: int = 0  # 0 = same calendar day only (auditable)
     high_frequency_threshold: int = 5
+    # Maximum wall-clock difference between the bank and ledger sides of an
+    # amount mismatch. Beyond this window, one bank-only row and one
+    # ledger-only row that share a reference and amount may be two unrelated
+    # transactions rather than one mismatched pair. The threshold is
+    # deliberately generous: pipeline lag between the two systems is
+    # normally minutes, but a same-morning gap of under an hour still
+    # points at the same event.
+    mismatch_max_minutes: int = 60
 
     # --- confidence thresholds (minutes between paired rows) ------------
     strong_minutes: float = 1
