@@ -79,7 +79,7 @@ resolving two bank rows.
 
 | sheet | rows |
 |---|---|
-| 2026-01 | 14 |
+| 2026-01 | 16 |
 | Resolved | 4 |
 | Consumed_Ledger_IDs | 126 |
 
@@ -215,3 +215,39 @@ What each number means on this sample:
 These numbers are asserted indirectly through `tests/test_metabase.py`,
 which checks the classification rules on small hand-built frames rather
 than on the full sample data.
+
+
+## Metabase export window guard
+
+The Metabase export is UTC; the reconciliation runs on WIB. If the export
+is cut on UTC midnight, transactions from 00:00 to 06:59 WIB fall on the
+previous UTC day and are missing from the file. A naive verification
+would classify every such row as `confirmed missing` (bank side) or
+`ledger only, no confirmation` (ledger side) even though the transaction
+exists in production.
+
+`metabase_export_looks_incomplete()` compares the ledger's early-WIB
+activity against the Metabase export and stops verification when the
+window looks truncated:
+
+- an empty Metabase file fires the guard whenever the ledger has any
+  early-WIB activity
+- a non-empty Metabase file with no early-WIB rows fires only when the
+  ledger has at least `metabase_min_early_rows` (default 3) rows in that
+  window, so a single cross-midnight twin does not trigger it
+
+When the guard fires and `--force` is not passed, the day skips Metabase
+verification entirely:
+
+    === Processing 2026-01-09 ===
+      [WARNING] Metabase export looks incomplete for 2026-01-09:
+        - ledger has 1 successful rows in WIB 00:00-06:59 but the Metabase export has no rows at all
+        Skipping Metabase verification. Re-download the export, or override with: --force 2026-01-09
+      Line Per Line: 2 rows | Recon 0 | Unrecon 2 | ...
+
+The sample data ships this case: `statement_2026-01-09.csv` and
+`ledger_2026-01-09.csv` each have a row at 04:00 WIB, and
+`metabase_2026-01-09.csv` is intentionally empty. Running the pipeline
+over the sample data shows the warning above and leaves the two rows
+without a Metabase classification. Day 6, which has exactly one ledger
+row at 00:00:20 WIB (a cross-midnight twin), does not fire the guard.

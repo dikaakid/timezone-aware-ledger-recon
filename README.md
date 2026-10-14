@@ -52,23 +52,30 @@ nobody notices.
 
 Expected output on the sample data (verified by `tests/test_pipeline.py`):
 
-    Found 4 statements, 2 ledger files, 2 metabase files.
+    Found 5 statements, 3 ledger files, 3 metabase files.
 
     === Processing 2026-01-05 ===
       Line Per Line: 71 rows | Recon 62 | Unrecon 9 | ambiguous 4 | wrong routing 1 | weak matches 2
       Unrecon (bank side): pending_gds 2 | pending_upstream 1 | confirmed_missing 1
       Unrecon (ledger side): pending_bank_posting 0 | pending_upstream 0 | ledger_only_unconfirmed 3
       Unrecon (no reference): 0
+      Unrecon (amount mismatch): 2
     === Processing 2026-01-06 ===
       Line Per Line: 70 rows | Recon 62 | Unrecon 8 | ambiguous 4 | wrong routing 1 | weak matches 2
       Unrecon (bank side): pending_gds 1 | pending_upstream 1 | confirmed_missing 1
       Unrecon (ledger side): pending_bank_posting 0 | pending_upstream 0 | ledger_only_unconfirmed 3
       Unrecon (no reference): 0
+      Unrecon (amount mismatch): 2
     === Processing 2026-01-07 ===
       [SKIPPED - STATEMENT LOOKS INCOMPLETE] 2026-01-07
     === Processing 2026-01-08 ===
       Line Per Line: 1 rows | Recon 0 | Unrecon 1 | ambiguous 0 | wrong routing 0 | weak matches 0
-    === Recheck === resolved rows moved: 4 | still pending: 14
+    === Processing 2026-01-09 ===
+      [WARNING] Metabase export looks incomplete for 2026-01-09:
+        - ledger has 1 successful rows in WIB 00:00-06:59 but the Metabase export has no rows at all
+        Skipping Metabase verification. Re-download the export, or override with: --force 2026-01-09
+      Line Per Line: 2 rows | Recon 0 | Unrecon 2 | ambiguous 0 | wrong routing 0 | weak matches 0
+    === Recheck === resolved rows moved: 4 | still pending: 16
 
 See [docs/SAMPLE_OUTPUT.md](docs/SAMPLE_OUTPUT.md) for real excerpts of the report.
 

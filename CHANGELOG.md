@@ -4,6 +4,54 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-10-14
+
+### Added
+- `metabase_export_looks_incomplete()` in `ledger_recon.metabase`:
+  refuses to verify when the Metabase export looks truncated relative
+  to the ledger. If the export is cut on UTC midnight, transactions
+  from 00:00 to 06:59 WIB fall on the previous UTC day; a naive
+  verification would classify every such row as `confirmed missing`
+  (bank side) or `ledger only, no confirmation` (ledger side).
+- `metabase_min_early_rows` in `ReconConfig` (default 3). A non-empty
+  export with no early-WIB rows fires the guard only when the ledger
+  has at least this many rows in that window. Below the threshold, a
+  single early row may be a cross-midnight twin or an incidental entry
+  rather than evidence of a cut export.
+- Sample data ships this case: `statement_2026-01-09.csv` and
+  `ledger_2026-01-09.csv` each have one row at 04:00 WIB, and
+  `metabase_2026-01-09.csv` is intentionally empty. Running the
+  pipeline over the sample data prints the guard warning and skips
+  verification for that day.
+- Seven new tests: four unit tests for the helper (empty file, enough
+  early rows with no metabase window, no ledger early rows, both sides
+  present), one that a single incidental early row does not fire, and
+  one integration test that runs the full sample pipeline and asserts
+  the guard fires for Day 9 but not Day 6.
+
+### Changed
+- `reconcile_day` calls the guard after loading Metabase and before
+  attaching verification status. With `--force`, the day proceeds and
+  the warning is logged with a `(forced)` suffix. Without it, the day
+  skips Metabase verification and the log prints the reason plus the
+  `--force` hint.
+
+### Fixed
+- The first version of the guard fired on Day 6 of the sample data
+  because one ledger row at 00:00:20 WIB (a cross-midnight twin whose
+  Metabase counterpart is on Day 1) looked like a truncated early
+  window. False positives would have trained operators to pass
+  `--force` every day, defeating the guard. The threshold was added in
+  response; Day 6 no longer trips it.
+
+### Compatibility
+- Days without an early-WIB ledger row are unaffected. Days where both
+  the ledger and Metabase show early-WIB activity are unaffected. The
+  guard only changes behaviour when the evidence points to a cut
+  export, and `--force` remains an explicit override.
+
+98 tests pass (was 96).
+
 ## [1.4.1] - 2026-10-14
 
 ### Fixed
