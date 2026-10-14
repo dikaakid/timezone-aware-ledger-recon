@@ -152,8 +152,12 @@ populated for `Unrecon` rows:
 
 | value | meaning |
 |---|---|
-| `Unrecon - pending GDS` | Present and final in Metabase; GDS export is behind |
-| `Unrecon - confirmed missing` | Absent or not final in Metabase; real break |
+| `Unrecon - pending GDS` | Bank-only, present and FINAL in Metabase; wait for GDS |
+| `Unrecon - pending upstream status (bank)` | Bank-only, present but not FINAL in Metabase |
+| `Unrecon - confirmed missing` | Bank-only, absent from Metabase; real break |
+| `Unrecon - pending bank posting` | Ledger-only, present and FINAL in Metabase; wait for bank |
+| `Unrecon - pending upstream status (ledger)` | Ledger-only, present but not FINAL in Metabase |
+| `Unrecon - ledger only, no confirmation` | Ledger-only, absent from Metabase; investigate ledger |
 | `Unrecon - no reference` | No reference extracted from the description |
 | *empty* | Row is `Recon`, or `Amount_Mismatch = True`; verification not applicable |
 
@@ -171,10 +175,22 @@ the timezone normalisation is exercised end-to-end.
 Running the pipeline over the sample data classifies the unreconciled rows
 like this:
 
-| day | pending GDS | confirmed missing | no reference |
+| day | bank side (pg / up / miss) | ledger side (pbp / up / unconf) | no reference |
 |---|---|---|---|
-| 2026-01-05 | 2 | 4 | 0 |
-| 2026-01-06 | 1 | 5 | 0 |
+| 2026-01-05 | 2 / 1 / 1 | 0 / 0 / 2 | 0 |
+| 2026-01-06 | 1 / 1 / 1 | 0 / 0 / 3 | 0 |
+
+Abbreviations:
+
+- **pg** = `pending GDS`: present and FINAL in Metabase; wait for the
+  bank statement.
+- **up** = `pending upstream status (bank/ledger)`: present in Metabase
+  but not FINAL yet; wait for Metabase to finalize.
+- **miss** = `confirmed missing`: absent from Metabase; a real break.
+- **pbp** = `pending bank posting`: present and FINAL in Metabase but the
+  bank statement has not posted it yet.
+- **unconf** = `ledger only, no confirmation`: ledger recorded it, but
+  Metabase has no record either. Investigate the ledger entry.
 
 Rows flagged `Amount_Mismatch = True` are not sent to Metabase (see
 "Amount mismatch detection" above); their `Metabase_Status` stays empty
@@ -183,14 +199,13 @@ and they are not counted in this table. On 2026-01-05 that is 2 rows
 
 What each number means on this sample:
 
-- **pending GDS** (2 on day 1): a bank-only row (77000) and the
-  bank-side of a cross-midnight payment (91000). Both exist and are
-  final in Metabase, so they are waiting for the GDS export, not real
-  breaks.
-- **confirmed missing** (4 on day 1): one bank-only row whose Metabase
-  status is PENDING rather than FINAL (78000), the fourth row of the
-  ambiguous 250000 group, and two ledger-only rows (64000, 65000) that
-  have no bank counterpart to join to.
+- **2026-01-05, bank side**: 2 waiting for GDS (77000 and the
+  cross-midnight 91000), 1 waiting for Metabase to finalize (78000,
+  status PENDING), 1 real break (the fourth row of the ambiguous 250000
+  group has no Metabase record).
+- **2026-01-05, ledger side**: 2 ledger-only rows (64000, 65000) with no
+  Metabase confirmation at all -- the ledger recorded them but nothing
+  else did.
 - **no reference** (0): every unreconciled row on these days had an
   extractable reference, so no row was skipped at the first classification
   step.

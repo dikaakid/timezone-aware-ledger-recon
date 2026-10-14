@@ -4,6 +4,58 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-10-14
+
+### Changed
+- Metabase verification now classifies unreconciled rows into seven
+  categories instead of three, depending on which side of the
+  reconciliation they belong to (bank-only vs ledger-only) and how
+  Metabase describes the key (FINAL, non-FINAL, absent).
+
+  Before:
+    Unrecon - pending GDS       present AND final in Metabase
+    Unrecon - confirmed missing absent OR not final
+    Unrecon - no reference      no reference extracted
+
+  After:
+    Bank-only:
+      Unrecon - pending GDS                        final in Metabase
+      Unrecon - pending upstream status (bank)     present, not final
+      Unrecon - confirmed missing                  absent
+    Ledger-only:
+      Unrecon - pending bank posting               final in Metabase
+      Unrecon - pending upstream status (ledger)   present, not final
+      Unrecon - ledger only, no confirmation       absent
+    Both:
+      Unrecon - no reference                       no reference
+
+  The previous two-way split conflated two very different situations:
+  a row whose Metabase status is PENDING (transaction exists, not yet
+  final) was labelled "confirmed missing", the same label as a row that
+  is completely absent. It also labelled ledger-only rows as "confirmed
+  missing" when Metabase cannot answer that question at all.
+
+- The pipeline log now prints three lines per day, split by side:
+  `Unrecon (bank side)`, `Unrecon (ledger side)`, `Unrecon (no reference)`.
+- `verify_unrecon` now requires `bank_txn_id` and `ledger_id` columns on
+  its input, to determine which side each row belongs to. It raises a
+  clear error if either is missing instead of guessing.
+
+### Added
+- Four new constants: `UNRECON_PENDING_UPSTREAM_BANK`,
+  `UNRECON_PENDING_UPSTREAM_LEDGER`, `UNRECON_PENDING_BANK_POSTING`,
+  `UNRECON_LEDGER_ONLY_UNCONFIRMED`.
+- Eight new tests: three bank-side, three ledger-side, one multi-use
+  VA, one guard against missing side columns.
+
+### Removed
+- `UNRECON_PENDING` and `UNRECON_MISSING` aliases. Use the canonical
+  names listed above. The intermediate commit that introduced the new
+  constants kept the aliases for backward compatibility; this release
+  drops them.
+
+79 tests pass (was 75).
+
 ## [1.2.1] - 2026-10-14
 
 ### Fixed

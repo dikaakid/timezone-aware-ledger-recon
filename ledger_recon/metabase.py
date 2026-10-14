@@ -13,8 +13,17 @@ from .tz import localize
 
 METABASE_REQUIRED = ["trx_id", "reference", "amount", "created_at", "status"]
 
-UNRECON_PENDING = "Unrecon - pending GDS"
-UNRECON_MISSING = "Unrecon - confirmed missing"
+# Canonical status values. Each one points to a distinct operator action:
+# wait for GDS, wait for Metabase to finalize, wait for the bank to post,
+# or investigate a real break. The side (bank-only vs ledger-only) is part
+# of the label because the same Metabase state implies a different action
+# depending on which side is missing.
+UNRECON_PENDING_GDS = "Unrecon - pending GDS"
+UNRECON_PENDING_UPSTREAM_BANK = "Unrecon - pending upstream status (bank)"
+UNRECON_PENDING_UPSTREAM_LEDGER = "Unrecon - pending upstream status (ledger)"
+UNRECON_CONFIRMED_MISSING = "Unrecon - confirmed missing"
+UNRECON_PENDING_BANK_POSTING = "Unrecon - pending bank posting"
+UNRECON_LEDGER_ONLY_UNCONFIRMED = "Unrecon - ledger only, no confirmation"
 UNRECON_NO_REF = "Unrecon - no reference"
 
 
@@ -75,19 +84,60 @@ def verify_unrecon(
     Never by reference alone, because a reference can be reused many times
     in a single day (multi-use virtual accounts).
 
-    Status values:
-      - UNRECON_PENDING: present and final in Metabase -> data pipeline lag
-      - UNRECON_MISSING: absent or not final            -> real break
-      - UNRECON_NO_REF:  no reference was extractable
+    The classification depends on two facts: which side of the
+    reconciliation the row belongs to, and how Metabase describes the key.
+
+    Bank-only rows (no ledger counterpart in the merge):
+      - present and FINAL in Metabase      -> UNRECON_PENDING_GDS
+      - present but not FINAL              -> UNRECON_PENDING_UPSTREAM_BANK
+      - absent from Metabase               -> UNRECON_CONFIRMED_MISSING
+
+    Ledger-only rows (no bank counterpart in the merge):
+      - present and FINAL in Metabase      -> UNRECON_PENDING_BANK_POSTING
+      - present but not FINAL              -> UNRECON_PENDING_UPSTREAM_LEDGER
+      - absent from Metabase               -> UNRECON_LEDGER_ONLY_UNCONFIRMED
+
+    In both cases, a missing reference yields UNRECON_NO_REF.
+
+    The caller must supply bank_txn_id and ledger_id columns so the side
+    can be determined. Rows with both or neither set are not expected on
+    input; the function raises on a missing column rather than guessing.
     """
     out = unrecon_rows.copy()
     if out.empty:
         out["Metabase_Status"] = pd.Series(dtype="string")
         return out
 
+    for col in ("bank_txn_id", "ledger_id"):
+        if col not in out.columns:
+            raise ValueError(
+                f"verify_unrecon requires a {col!r} column to determine which "
+                f"side of the reconciliation each row belongs to."
+            )
+
     mb = metabase.copy()
-    mb_final = mb[mb["status"].str.upper() == cfg.metabase_final_status.upper()]
-    mb_keys = set(zip(mb_final["reference"], mb_final["amount_minor"], mb_final["occurrence"], strict=True))
+    status = mb["status"].str.upper()
+    final_status = cfg.metabase_final_status.upper()
+
+    mb_final = mb[status == final_status]
+    mb_nonfinal = mb[status != final_status]
+
+    final_keys = set(
+        zip(
+            mb_final["reference"],
+            mb_final["amount_minor"],
+            mb_final["occurrence"],
+            strict=True,
+        )
+    )
+    nonfinal_keys = set(
+        zip(
+            mb_nonfinal["reference"],
+            mb_nonfinal["amount_minor"],
+            mb_nonfinal["occurrence"],
+            strict=True,
+        )
+    )
 
     statuses: list[str] = []
     for _, row in out.iterrows():
@@ -95,8 +145,18 @@ def verify_unrecon(
         if ref is None or pd.isna(ref):
             statuses.append(UNRECON_NO_REF)
             continue
+
+        is_bank_side = pd.notna(row.get("bank_txn_id"))
         key = (str(ref), int(row["amount_minor"]), int(row.get("occurrence", 1)))
-        statuses.append(UNRECON_PENDING if key in mb_keys else UNRECON_MISSING)
+
+        if key in final_keys:
+            statuses.append(UNRECON_PENDING_GDS if is_bank_side else UNRECON_PENDING_BANK_POSTING)
+        elif key in nonfinal_keys:
+            statuses.append(
+                UNRECON_PENDING_UPSTREAM_BANK if is_bank_side else UNRECON_PENDING_UPSTREAM_LEDGER
+            )
+        else:
+            statuses.append(UNRECON_CONFIRMED_MISSING if is_bank_side else UNRECON_LEDGER_ONLY_UNCONFIRMED)
 
     out["Metabase_Status"] = statuses
     return out

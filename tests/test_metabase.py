@@ -15,9 +15,13 @@ import pytest
 
 from ledger_recon.config import ReconConfig
 from ledger_recon.metabase import (
-    UNRECON_MISSING,
+    UNRECON_CONFIRMED_MISSING,
+    UNRECON_LEDGER_ONLY_UNCONFIRMED,
     UNRECON_NO_REF,
-    UNRECON_PENDING,
+    UNRECON_PENDING_BANK_POSTING,
+    UNRECON_PENDING_GDS,
+    UNRECON_PENDING_UPSTREAM_BANK,
+    UNRECON_PENDING_UPSTREAM_LEDGER,
     load_metabase,
     verify_unrecon,
 )
@@ -36,13 +40,25 @@ def _df(**overrides):
     return pd.DataFrame(base)
 
 
-def _unrecon(reference="8800112345678901", amount_minor=1_000_000, occurrence=1):
-    """One unreconciled row, defaulting to the same amount as _df()."""
+def _unrecon(
+    reference="8800112345678901",
+    amount_minor=1_000_000,
+    occurrence=1,
+    side="bank",
+):
+    """One unreconciled row, defaulting to the same amount as _df().
+
+    side="bank" fills bank_txn_id and leaves ledger_id empty, side="ledger"
+    does the opposite. verify_unrecon needs one of the two set to decide
+    which classification path to take.
+    """
     return pd.DataFrame(
         {
             "reference": [reference],
             "amount_minor": [amount_minor],
             "occurrence": [occurrence],
+            "bank_txn_id": ["B1"] if side == "bank" else [None],
+            "ledger_id": [None] if side == "bank" else ["L1"],
         }
     )
 
@@ -81,22 +97,40 @@ def test_column_rename_via_config():
 # --- verification tests -----------------------------------------------------
 
 
-def test_verify_marks_pending_when_present_in_metabase():
+def test_verify_bank_final_is_pending_gds():
     mb = load_metabase(_df(status="FINAL"), ReconConfig())
-    out = verify_unrecon(_unrecon(), mb, ReconConfig())
-    assert out["Metabase_Status"].iloc[0] == UNRECON_PENDING
+    out = verify_unrecon(_unrecon(side="bank"), mb, ReconConfig())
+    assert out["Metabase_Status"].iloc[0] == UNRECON_PENDING_GDS
 
 
-def test_verify_marks_missing_when_absent():
+def test_verify_bank_absent_is_confirmed_missing():
     mb = load_metabase(_df(status="FINAL"), ReconConfig())
-    out = verify_unrecon(_unrecon(reference="9999999999999999"), mb, ReconConfig())
-    assert out["Metabase_Status"].iloc[0] == UNRECON_MISSING
+    out = verify_unrecon(_unrecon(reference="9999999999999999", side="bank"), mb, ReconConfig())
+    assert out["Metabase_Status"].iloc[0] == UNRECON_CONFIRMED_MISSING
 
 
-def test_verify_marks_missing_when_status_not_final():
+def test_verify_bank_nonfinal_is_pending_upstream_bank():
     mb = load_metabase(_df(status="PENDING"), ReconConfig())
-    out = verify_unrecon(_unrecon(), mb, ReconConfig())
-    assert out["Metabase_Status"].iloc[0] == UNRECON_MISSING
+    out = verify_unrecon(_unrecon(side="bank"), mb, ReconConfig())
+    assert out["Metabase_Status"].iloc[0] == UNRECON_PENDING_UPSTREAM_BANK
+
+
+def test_verify_ledger_final_is_pending_bank_posting():
+    mb = load_metabase(_df(status="FINAL"), ReconConfig())
+    out = verify_unrecon(_unrecon(side="ledger"), mb, ReconConfig())
+    assert out["Metabase_Status"].iloc[0] == UNRECON_PENDING_BANK_POSTING
+
+
+def test_verify_ledger_nonfinal_is_pending_upstream_ledger():
+    mb = load_metabase(_df(status="PENDING"), ReconConfig())
+    out = verify_unrecon(_unrecon(side="ledger"), mb, ReconConfig())
+    assert out["Metabase_Status"].iloc[0] == UNRECON_PENDING_UPSTREAM_LEDGER
+
+
+def test_verify_ledger_absent_is_ledger_only_unconfirmed():
+    mb = load_metabase(_df(status="FINAL"), ReconConfig())
+    out = verify_unrecon(_unrecon(reference="9999999999999999", side="ledger"), mb, ReconConfig())
+    assert out["Metabase_Status"].iloc[0] == UNRECON_LEDGER_ONLY_UNCONFIRMED
 
 
 def test_verify_multi_use_va_uses_occurrence_not_reference_alone():
@@ -106,11 +140,30 @@ def test_verify_multi_use_va_uses_occurrence_not_reference_alone():
             "reference": ["8800112345678901", "8800112345678901"],
             "amount_minor": [1_000_000, 1_000_000],
             "occurrence": [1, 2],
+            "bank_txn_id": ["B1", "B2"],
+            "ledger_id": [None, None],
         }
     )
     mb = load_metabase(_df(status="FINAL"), ReconConfig())
     out = verify_unrecon(unrecon, mb, ReconConfig())
-    assert out["Metabase_Status"].tolist() == [UNRECON_PENDING, UNRECON_MISSING]
+    assert out["Metabase_Status"].tolist() == [
+        UNRECON_PENDING_GDS,
+        UNRECON_CONFIRMED_MISSING,
+    ]
+
+
+def test_verify_raises_without_side_columns():
+    """The function must refuse input it cannot classify by side."""
+    mb = load_metabase(_df(status="FINAL"), ReconConfig())
+    bad = pd.DataFrame(
+        {
+            "reference": ["8800112345678901"],
+            "amount_minor": [1_000_000],
+            "occurrence": [1],
+        }
+    )
+    with pytest.raises(ValueError, match="bank_txn_id"):
+        verify_unrecon(bad, mb, ReconConfig())
 
 
 def test_verify_no_reference_flagged():
@@ -177,10 +230,12 @@ def test_attach_metabase_status_still_verifies_normal_unrecon():
                 "occurrence": 1,
                 "Match?": "Unrecon",
                 "Amount_Mismatch": False,
+                "bank_txn_id": "B1",
+                "ledger_id": None,
             },
         ]
     )
     mb = load_metabase(_df(status="FINAL"), cfg)
 
     result = _attach_metabase_status(lpl, mb, cfg)
-    assert result["Metabase_Status"].iloc[0] == UNRECON_PENDING
+    assert result["Metabase_Status"].iloc[0] == UNRECON_PENDING_GDS

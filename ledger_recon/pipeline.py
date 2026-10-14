@@ -12,9 +12,13 @@ from .config import ReconConfig
 from .core import build_line_per_line, statement_looks_incomplete, summarize
 from .loaders import filter_window, load_ledger, load_statement
 from .metabase import (
-    UNRECON_MISSING,
+    UNRECON_CONFIRMED_MISSING,
+    UNRECON_LEDGER_ONLY_UNCONFIRMED,
     UNRECON_NO_REF,
-    UNRECON_PENDING,
+    UNRECON_PENDING_BANK_POSTING,
+    UNRECON_PENDING_GDS,
+    UNRECON_PENDING_UPSTREAM_BANK,
+    UNRECON_PENDING_UPSTREAM_LEDGER,
     load_metabase,
     verify_unrecon,
 )
@@ -233,11 +237,18 @@ def run_batch(
         if "Metabase_Status" in lpl_cols:
             counts = res["lpl"]["Metabase_Status"].value_counts()
             log(
-                f"  Unrecon verified against Metabase: "
-                f"pending_gds {int(counts.get(UNRECON_PENDING, 0))} | "
-                f"confirmed_missing {int(counts.get(UNRECON_MISSING, 0))} | "
-                f"no_reference {int(counts.get(UNRECON_NO_REF, 0))}"
+                f"  Unrecon (bank side): "
+                f"pending_gds {int(counts.get(UNRECON_PENDING_GDS, 0))} | "
+                f"pending_upstream {int(counts.get(UNRECON_PENDING_UPSTREAM_BANK, 0))} | "
+                f"confirmed_missing {int(counts.get(UNRECON_CONFIRMED_MISSING, 0))}"
             )
+            log(
+                f"  Unrecon (ledger side): "
+                f"pending_bank_posting {int(counts.get(UNRECON_PENDING_BANK_POSTING, 0))} | "
+                f"pending_upstream {int(counts.get(UNRECON_PENDING_UPSTREAM_LEDGER, 0))} | "
+                f"ledger_only_unconfirmed {int(counts.get(UNRECON_LEDGER_ONLY_UNCONFIRMED, 0))}"
+            )
+            log(f"  Unrecon (no reference): {int(counts.get(UNRECON_NO_REF, 0))}")
         log(f"  -> Saved: {out_path}")
         results[d] = s
         if not res["unrecon"].empty:
