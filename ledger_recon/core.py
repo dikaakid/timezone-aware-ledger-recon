@@ -46,6 +46,7 @@ OUTPUT_COLUMNS = (
         "Pairing_Ambiguous",
         "Amount_Mismatch",
         "Amount_Delta",
+        "Amount_Delta_Minor",
         "bank_posted_at_gmt7",
         "ledger_created_at_gmt7",
     ]
@@ -280,20 +281,27 @@ def build_line_per_line(
     # pattern and lets us replace the misleading case labels on both rows.
     mismatch_mask, mismatch_delta = detect_amount_mismatch(m)
     m["Amount_Mismatch"] = mismatch_mask
-    m["Amount_Delta"] = mismatch_delta
+    m["Amount_Delta_Minor"] = mismatch_delta
+    m["Amount_Delta"] = mismatch_delta.astype("Float64") / (10**cfg.amount_decimals)
 
     def _replace_case_for_mismatch(row):
         if not row["Amount_Mismatch"]:
             return row["case"]
-        delta = int(row["Amount_Delta"])
+        delta_minor = int(row["Amount_Delta_Minor"])
         my_minor = int(row["amount_minor"])
         if pd.notna(row["bank_txn_id"]):
             bank_minor = my_minor
-            ledger_minor = my_minor + delta
+            ledger_minor = my_minor + delta_minor
         else:
             ledger_minor = my_minor
-            bank_minor = my_minor - delta
-        new_label = f"AMOUNT MISMATCH (bank {bank_minor} vs ledger {ledger_minor}, delta {delta:+d})"
+            bank_minor = my_minor - delta_minor
+        scale = 10**cfg.amount_decimals
+        d = cfg.amount_decimals
+        new_label = (
+            f"AMOUNT MISMATCH (bank {bank_minor / scale:,.{d}f} vs "
+            f"ledger {ledger_minor / scale:,.{d}f}, "
+            f"delta {delta_minor / scale:+,.{d}f})"
+        )
         old_case = row["case"] or ""
         if " | " in old_case:
             _, _, note = old_case.partition(" | ")

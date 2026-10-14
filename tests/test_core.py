@@ -206,21 +206,23 @@ def test_amount_mismatch_replaces_case_label_on_both_rows(run):
     assert bank_row["Amount_Mismatch"] and ledger_row["Amount_Mismatch"]
     assert "AMOUNT MISMATCH" in bank_row["case"]
     assert "AMOUNT MISMATCH" in ledger_row["case"]
-    assert "bank 15000000 vs ledger 15500000" in bank_row["case"]
-    assert "delta +500000" in bank_row["case"]
+    assert "bank 150,000.00 vs ledger 155,000.00" in bank_row["case"]
+    assert "delta +5,000.00" in bank_row["case"]
     # Both rows share the same core label; the bank-side row may carry an
     # extra " | username auto-filled ..." suffix when the ledger knows the
     # owner. The ledger-side row does not need that suffix.
-    core_label = "AMOUNT MISMATCH (bank 15000000 vs ledger 15500000, delta +500000)"
+    core_label = "AMOUNT MISMATCH (bank 150,000.00 vs ledger 155,000.00, delta +5,000.00)"
     assert bank_row["case"].startswith(core_label)
     assert ledger_row["case"] == core_label
 
 
 def test_amount_mismatch_populates_delta_column(run):
-    """Amount_Delta holds the signed ledger - bank difference in minor units."""
+    """Amount_Delta is in major units, Amount_Delta_Minor in minor units."""
     r = run([bank("B1", T, amount=150000)], [led("L1", T, amount=155000)])
     assert r["Amount_Delta"].notna().all()
-    assert (r["Amount_Delta"] == 500000).all()
+    assert r["Amount_Delta_Minor"].notna().all()
+    assert (r["Amount_Delta"] == 5000).all()
+    assert (r["Amount_Delta_Minor"] == 500000).all()
     assert summarize(r)["amount_mismatch_rows"] == 2
 
 

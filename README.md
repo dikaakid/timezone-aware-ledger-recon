@@ -56,10 +56,10 @@ Expected output on the sample data (verified by `tests/test_pipeline.py`):
 
     === Processing 2026-01-05 ===
       Line Per Line: 70 rows | Recon 62 | Unrecon 8 | ambiguous 4 | wrong routing 1 | weak matches 2
-      Unrecon verified against Metabase: pending_gds 3 | confirmed_missing 5 | no_reference 0
+      Unrecon verified against Metabase: pending_gds 2 | confirmed_missing 4 | no_reference 0
     === Processing 2026-01-06 ===
       Line Per Line: 70 rows | Recon 62 | Unrecon 8 | ambiguous 4 | wrong routing 1 | weak matches 2
-      Unrecon verified against Metabase: pending_gds 2 | confirmed_missing 6 | no_reference 0
+      Unrecon verified against Metabase: pending_gds 1 | confirmed_missing 5 | no_reference 0
     === Processing 2026-01-07 ===
       [SKIPPED - STATEMENT LOOKS INCOMPLETE] 2026-01-07
     === Recheck === resolved rows moved: 2 | still pending: 14

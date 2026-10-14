@@ -42,8 +42,9 @@ def _resolve_tz(source: str, mapping: dict | None) -> ZoneInfo:
 def _accept_aware(ts: pd.Timestamp, tz: ZoneInfo) -> pd.Timestamp | None:
     """Return ts converted to WIB if its offset matches the source, else None.
 
-    Comparing offsets at the actual instant (not at some fixed reference) keeps
-    this correct for DST zones, even though WIB and UTC do not use DST.
+    Comparing offsets at the actual instant (not at a fixed reference) so
+    the check stays correct if a future source uses a DST zone. WIB and UTC
+    do not use DST; the tool does not claim DST support.
     """
     if ts.tz is None:
         return ts.tz_localize(tz).tz_convert(TZ_JAKARTA)

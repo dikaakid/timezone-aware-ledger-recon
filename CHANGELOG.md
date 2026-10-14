@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-10-14
+
+### Fixed
+- The `case` label and `Amount_Delta` column for amount mismatches
+  were reported in minor units (`bank 15000000 vs ledger 15500000,
+  delta +500000`) while the adjacent `amount` column uses major units.
+  A finance reader would read the delta as 100x larger than it is.
+
+  The label now formats both sides and the delta in major units with
+  thousands separators and two decimals
+  (`AMOUNT MISMATCH (bank 150,000.00 vs ledger 155,000.00, delta
+  +5,000.00)`). The value in `Amount_Delta` is now in the same scale
+  as `amount` (Float64, major units).
+
+### Added
+- `Amount_Delta_Minor` column: the signed `ledger - bank` difference in
+  exact minor units. Use `Amount_Delta` for reading, `Amount_Delta_Minor`
+  for arithmetic.
+
+### Changed
+- `docs/SAMPLE_OUTPUT.md` and `docs/TIMEZONE.md` no longer claim that
+  Metabase "typically agrees with the bank side" or that the tool
+  supports DST zones. Neither was ever tested; the wording now matches
+  what the code actually does.
+- README "Expected output" section now reflects the post-1.2.0 Metabase
+  figures (`pending_gds 2 | confirmed_missing 4` on 2026-01-05, and
+  `1 | 5` on 2026-01-06).
+- The heading "Timezone-aware output (v0.2.0+)" was renamed to
+  "Timezone-aware output" -- v0.2.0 was never a released version of
+  this project.
+- CHANGELOG 1.2.0 entry said "75 tests pass (was 70)"; the previous
+  release (1.1.0) had 67 tests.
+
+75 tests pass (unchanged).
+
 ## [1.2.0] - 2026-10-14
 
 ### Added
@@ -39,7 +74,7 @@ All notable changes to this project are documented here. The format follows
 - Existing consumers that filter by `Match?` or by `case` substrings
   (e.g. `"auto-filled"`) are unaffected.
 
-75 tests pass (was 70).
+75 tests pass (was 67).
 
 ## [1.1.0] - 2026-10-14
 

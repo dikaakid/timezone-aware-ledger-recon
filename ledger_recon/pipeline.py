@@ -65,9 +65,10 @@ def _attach_metabase_status(lpl: pd.DataFrame, mb: pd.DataFrame, cfg: ReconConfi
     against Metabase, except amount-mismatch rows: those have already
     been classified as a different kind of break (a bank row and a ledger
     row that share a reference but disagree on amount). Running the
-    Metabase lookup on them would only reinforce the wrong label, because
-    Metabase typically agrees with the bank side and would mark the bank
-    row as "pending GDS" while the ledger row exists.
+    Metabase lookup on them would only reinforce the wrong label: the
+    verification layer confirms a single (reference, amount, occurrence)
+    key against Metabase, it does not arbitrate between two sides of a
+    disagreement.
     """
     lpl = lpl.copy()
     unrecon_mask = lpl["Match?"] == "Unrecon"

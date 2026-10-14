@@ -97,14 +97,15 @@ reference, there is exactly one Unrecon bank-only row and exactly one
 Unrecon ledger-only row. Both rows are then labelled with a distinct
 `case`:
 
-    AMOUNT MISMATCH (bank 15000000 vs ledger 15500000, delta +500000)
+    AMOUNT MISMATCH (bank 150,000.00 vs ledger 155,000.00, delta +5,000.00)
 
-and two new columns are populated:
+and three new columns are populated:
 
 | column | type | value |
 |---|---|---|
 | `Amount_Mismatch` | bool | `True` on both rows of a detected pair |
-| `Amount_Delta` | Int64 (minor units) | signed `ledger - bank` difference |
+| `Amount_Delta` | Float64 (major units) | signed `ledger - bank` difference, same scale as `amount` |
+| `Amount_Delta_Minor` | Int64 (minor units) | signed `ledger - bank` difference, exact |
 
 The delta is positive when the ledger claims more than the bank
 received, negative in the opposite case. The `case` label shows the
@@ -113,20 +114,22 @@ direction at a glance.
 
 Example from the sample data on 2026-01-05:
 
-| reference | amount | bank_txn_id | ledger_id | Amount_Delta | case |
-|---|---|---|---|---|---|
-| 8800439498116277 | 150000 | B0105-0065 | | 500000 | AMOUNT MISMATCH (bank 15000000 vs ledger 15500000, delta +500000) \| username auto-filled from same-day reference history |
-| 8800439498116277 | 155000 | | L0105-0062 | 500000 | AMOUNT MISMATCH (bank 15000000 vs ledger 15500000, delta +500000) |
+| reference | amount | bank_txn_id | ledger_id | Amount_Delta | Amount_Delta_Minor | case |
+|---|---|---|---|---|---|---|
+| 8800439498116277 | 150000 | B0105-0065 | | 5000.00 | 500000 | AMOUNT MISMATCH (bank 150,000.00 vs ledger 155,000.00, delta +5,000.00) \| username auto-filled from same-day reference history |
+| 8800439498116277 | 155000 | | L0105-0062 | 5000.00 | 500000 | AMOUNT MISMATCH (bank 150,000.00 vs ledger 155,000.00, delta +5,000.00) |
 
 The `summary` sheet reports `amount_mismatch_rows = 2` (both rows of
 the one pair found on this day).
 
-Rows flagged `Amount_Mismatch = True` are **not** sent to Metabase
-during verification. Sending them would only reinforce the wrong label:
-Metabase agrees with the bank side and would mark the bank row as
-`pending GDS` while the ledger row exists but with a different amount.
+Rows flagged `Amount_Mismatch = True` are **not** sent to Metabase during
+verification. The verification layer is built to confirm a single
+`(reference, amount, occurrence)` key against Metabase, not to arbitrate
+between two sides of a disagreement. Metabase will agree with whichever
+side matches its data, but which side that is differs per transaction;
+the tool leaves the row unverified rather than guess.
 
-## Timezone-aware output (v0.2.0+)
+## Timezone-aware output
 
 Two columns are added to the **Line Per Line** sheet:
 
