@@ -239,3 +239,149 @@ def test_attach_metabase_status_still_verifies_normal_unrecon():
 
     result = _attach_metabase_status(lpl, mb, cfg)
     assert result["Metabase_Status"].iloc[0] == UNRECON_PENDING_GDS
+
+
+# --- metabase_export_looks_incomplete unit tests ----------------------------
+
+
+def _ledger_frame_for_guard(rows):
+    """Build a ledger frame with the columns the guard reads."""
+    return pd.DataFrame(rows)
+
+
+def _metabase_frame_for_guard(rows=None, columns=None):
+    """Build a metabase frame for the guard tests.
+
+    Accepts either a list of dicts (rows) or a list of column names
+    (columns), whichever the caller passes. The guard reads only
+    created_at; when rows are given, the frame carries whatever columns
+    the dicts define.
+    """
+    if columns is not None:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(rows or [])
+
+
+def test_guard_fires_when_ledger_early_and_metabase_empty():
+    """Ledger early WIB row, metabase export has no rows at all."""
+    from datetime import date
+
+    from ledger_recon.metabase import metabase_export_looks_incomplete
+
+    ledger = _ledger_frame_for_guard(
+        [
+            {
+                "ledger_date": date(2026, 1, 5),
+                "created_at": pd.Timestamp("2026-01-05 04:00:00", tz="Asia/Jakarta"),
+            }
+        ]
+    )
+    metabase = _metabase_frame_for_guard(columns=["created_at"])
+    incomplete, reasons = metabase_export_looks_incomplete(metabase, ledger, date(2026, 1, 5), ReconConfig())
+    assert incomplete is True
+    assert any("00:00-06:59" in r for r in reasons)
+
+
+def test_guard_fires_when_enough_ledger_early_rows_and_none_in_metabase():
+    """Five ledger early rows and zero in the metabase window -> truncation."""
+    from datetime import date
+
+    from ledger_recon.metabase import metabase_export_looks_incomplete
+
+    ledger = _ledger_frame_for_guard(
+        [
+            {
+                "ledger_date": date(2026, 1, 5),
+                "created_at": pd.Timestamp(f"2026-01-05 0{h}:00:00", tz="Asia/Jakarta"),
+            }
+            for h in range(1, 6)
+        ]
+    )
+    metabase = _metabase_frame_for_guard(
+        [
+            {
+                "created_at": pd.Timestamp("2026-01-05 10:00:00", tz="Asia/Jakarta"),
+            }
+        ]
+    )
+    incomplete, reasons = metabase_export_looks_incomplete(metabase, ledger, date(2026, 1, 5), ReconConfig())
+    assert incomplete is True
+    assert any("0 rows in that window" in r for r in reasons)
+
+
+def test_guard_does_not_fire_when_ledger_has_no_early_rows():
+    """Ledger has no transactions in the early window -- nothing to check."""
+    from datetime import date
+
+    from ledger_recon.metabase import metabase_export_looks_incomplete
+
+    ledger = _ledger_frame_for_guard(
+        [
+            {
+                "ledger_date": date(2026, 1, 5),
+                "created_at": pd.Timestamp("2026-01-05 10:00:00", tz="Asia/Jakarta"),
+            }
+        ]
+    )
+    metabase = _metabase_frame_for_guard(columns=["created_at"])
+    incomplete, reasons = metabase_export_looks_incomplete(metabase, ledger, date(2026, 1, 5), ReconConfig())
+    assert incomplete is False
+    assert reasons == []
+
+
+def test_guard_does_not_fire_when_both_have_early_rows():
+    """Ledger early row and metabase early row -- export looks complete."""
+    from datetime import date
+
+    from ledger_recon.metabase import metabase_export_looks_incomplete
+
+    ledger = _ledger_frame_for_guard(
+        [
+            {
+                "ledger_date": date(2026, 1, 5),
+                "created_at": pd.Timestamp("2026-01-05 04:00:00", tz="Asia/Jakarta"),
+            }
+        ]
+    )
+    metabase = _metabase_frame_for_guard(
+        [
+            {
+                "created_at": pd.Timestamp("2026-01-05 04:30:00", tz="Asia/Jakarta"),
+            }
+        ]
+    )
+    incomplete, reasons = metabase_export_looks_incomplete(metabase, ledger, date(2026, 1, 5), ReconConfig())
+    assert incomplete is False
+    assert reasons == []
+
+
+def test_guard_does_not_fire_on_one_incidental_early_row():
+    """A single ledger early row with no metabase window is not a truncation.
+
+    Sample data has a cross-midnight twin: one ledger row at 00:00:20 WIB
+    whose Metabase counterpart lives on the previous day. This must not
+    trigger the guard, or operators would see the warning every day and
+    learn to ignore it.
+    """
+    from datetime import date
+
+    from ledger_recon.metabase import metabase_export_looks_incomplete
+
+    ledger = _ledger_frame_for_guard(
+        [
+            {
+                "ledger_date": date(2026, 1, 6),
+                "created_at": pd.Timestamp("2026-01-06 00:00:20", tz="Asia/Jakarta"),
+            }
+        ]
+    )
+    metabase = _metabase_frame_for_guard(
+        [
+            {
+                "created_at": pd.Timestamp("2026-01-06 13:00:00", tz="Asia/Jakarta"),
+            }
+        ]
+    )
+    incomplete, reasons = metabase_export_looks_incomplete(metabase, ledger, date(2026, 1, 6), ReconConfig())
+    assert incomplete is False
+    assert reasons == []

@@ -72,6 +72,12 @@ class ReconConfig:
     # --- metabase (verification layer) ----------------------------------
     metabase_final_status: str = "FINAL"
     metabase_columns: dict = field(default_factory=dict)
+    # Minimum ledger rows in WIB 00:00-06:59 before the export-window
+    # guard treats a missing Metabase early window as evidence the export
+    # was truncated. Below this threshold, one or two early rows may be
+    # incidental (cross-midnight twins, ledger-only entries) rather than
+    # a sign of a cut export.
+    metabase_min_early_rows: int = 3
 
     # --- column renames: {"your column": "canonical column"} -------------
     statement_columns: dict = field(default_factory=dict)

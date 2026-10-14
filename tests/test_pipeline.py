@@ -153,3 +153,24 @@ def test_classify_unrecon_counts_raises_on_imbalance():
     summary = {"unrecon": 2}
     with pytest.raises(RuntimeError, match="does not add up"):
         _classify_unrecon_counts(lpl, summary)
+
+
+def test_metabase_guard_fires_only_for_a_truncated_export(data, tmp_path):
+    """The export-window guard must skip Day 9 (empty export) but not Day 6.
+
+    Day 6 has exactly one ledger row in the WIB early window -- the
+    cross-midnight twin whose Metabase counterpart is on Day 1. That
+    is incidental, not evidence of a truncated export, so the guard
+    must stay silent. Day 9 has an intentionally empty Metabase file
+    and a ledger row at 04:00 WIB, so the guard must fire and skip
+    verification.
+
+    The test reads the log rather than the report so it does not depend
+    on how the report writer lays columns out.
+    """
+    logs: list[str] = []
+    run_batch(data, tmp_path / "out", ReconConfig(), log=logs.append)
+    text = "\n".join(logs)
+
+    assert "Metabase export looks incomplete for 2026-01-09" in text
+    assert "Metabase export looks incomplete for 2026-01-06" not in text

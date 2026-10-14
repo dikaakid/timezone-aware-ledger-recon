@@ -296,10 +296,34 @@ def main() -> None:
     )
     write_csv(OUT / "statement_2026-01-08.csv", STATEMENT_COLS, day4.statement)
 
+    # Jan 9: Metabase export window guard demo. The ledger has one row at
+    # 04:00 WIB; the Metabase export is intentionally empty, simulating a
+    # UTC-midnight cut that drops the 00:00-06:59 WIB window. The guard
+    # fires and verification is skipped for this day.
+    d5 = date(2026, 1, 9)
+    day5 = Day(d5, rng)
+    when_early = datetime.combine(d5, time(4, 0))
+    day5.bank(
+        "8800577711100001",
+        50000,
+        when_early,
+        desc="TRF 8800577711100001 FROM CUSTOMER GUARD",
+    )
+    day5.led(
+        "8800577711100002",
+        50000,
+        when_early,
+        username="merchant_guard",
+    )
+    write_csv(OUT / "statement_2026-01-09.csv", STATEMENT_COLS, day5.statement)
+    write_csv(OUT / "ledger_2026-01-09.csv", LEDGER_COLS, day5.ledger)
+    write_csv(OUT / "metabase_2026-01-09.csv", METABASE_COLS, [])
+
     print(f"Sample data written to {OUT}")
-    print("  - 4 statements, 2 ledgers, 2 metabase files")
+    print("  - 5 statements, 3 ledgers, 3 metabase files")
     print(f"  - metabase_2026-01-05.csv: {len(day1.metabase_rows)} rows")
     print(f"  - metabase_2026-01-06.csv: {len(day2.metabase_rows)} rows")
+    print("  - metabase_2026-01-09.csv: 0 rows (incomplete export demo)")
 
 
 if __name__ == "__main__":

@@ -73,6 +73,75 @@ def load_metabase(src, cfg: ReconConfig) -> pd.DataFrame:
     return df
 
 
+def metabase_export_looks_incomplete(
+    metabase: pd.DataFrame,
+    ledger: pd.DataFrame,
+    target_date,
+    cfg: ReconConfig,
+) -> tuple[bool, list[str]]:
+    """Return (looks_incomplete, reasons) for a Metabase export of one day.
+
+    The Metabase export is UTC, the reconciliation runs on WIB. If the
+    export is cut on UTC midnight, transactions from 00:00 to 06:59 WIB
+    fall on the previous UTC day and are missing from the file. A naive
+    verification would classify every such row as `confirmed missing`
+    (bank side) or `ledger only, no confirmation` (ledger side), even
+    though the transaction is present in production -- a false break
+    that a finance team would waste hours chasing.
+
+    The signal we use: the ledger already shows successful transactions
+    inside the WIB early window. If those transactions exist, the same
+    events should be visible in Metabase, and a Metabase export with
+    zero rows in that window is almost certainly truncated. The guard
+    does not try to prove the export is complete; it only refuses to
+    classify when the evidence says the window is missing.
+
+    Parallel to statement_looks_incomplete: both guards prevent
+    reconciliation from producing false breaks based on incomplete
+    input. Both can be overridden with --force.
+
+    Returns (True, [reasons]) if the export should be treated as
+    incomplete for this day, otherwise (False, []).
+    """
+    early_hours = range(0, 7)
+
+    if ledger.empty or "ledger_date" not in ledger.columns:
+        return False, []
+    ledger_day = ledger[ledger["ledger_date"] == target_date]
+    if ledger_day.empty:
+        return False, []
+
+    ledger_early = int(ledger_day["created_at"].dt.hour.isin(early_hours).sum())
+    if ledger_early == 0:
+        return False, []
+
+    # A truly empty export is unambiguous evidence: the export file has no
+    # rows at all, so it cannot be complete for a day that already shows
+    # ledger activity in the early WIB window.
+    if metabase.empty:
+        return True, [
+            f"ledger has {ledger_early} successful rows in WIB 00:00-06:59 "
+            "but the Metabase export has no rows at all"
+        ]
+
+    # A non-empty export with no early-WIB rows is weaker evidence. One or
+    # two ledger early rows can be cross-midnight twins or incidental
+    # entries with no Metabase counterpart on this day. Only treat the
+    # window as truncated when there are enough early ledger rows to
+    # suggest a systematic cut, not a stray.
+    if ledger_early < cfg.metabase_min_early_rows:
+        return False, []
+
+    metabase_early = int(metabase["created_at"].dt.hour.isin(early_hours).sum())
+    if metabase_early == 0:
+        return True, [
+            f"ledger has {ledger_early} successful rows in WIB 00:00-06:59 "
+            "but the Metabase export has 0 rows in that window"
+        ]
+
+    return False, []
+
+
 def verify_unrecon(
     unrecon_rows: pd.DataFrame,
     metabase: pd.DataFrame,

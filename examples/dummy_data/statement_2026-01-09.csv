@@ -1,0 +1,2 @@
+txn_id,account_no,posted_at,description,direction,amount
+B0109-0001,0100000002,2026-01-09 04:00:00,TRF 8800577711100001 FROM CUSTOMER GUARD,CR,50000

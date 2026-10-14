@@ -20,6 +20,7 @@ from .metabase import (
     UNRECON_PENDING_UPSTREAM_BANK,
     UNRECON_PENDING_UPSTREAM_LEDGER,
     load_metabase,
+    metabase_export_looks_incomplete,
     verify_unrecon,
 )
 from .report import account_pivot, summary_frame, write_report
@@ -201,7 +202,21 @@ def reconcile_day(
     lpl = build_line_per_line(statement, ledger, d, cfg)
     if metabase_src is not None:
         mb = load_metabase(metabase_src, cfg)
-        lpl = _attach_metabase_status(lpl, mb, cfg)
+        incomplete, reasons = metabase_export_looks_incomplete(mb, ledger, d, cfg)
+        if incomplete and not force:
+            log(f"  [WARNING] Metabase export looks incomplete for {d.isoformat()}:")
+            for reason in reasons:
+                log(f"    - {reason}")
+            log(
+                "    Skipping Metabase verification. Re-download the export, "
+                f"or override with: --force {d.isoformat()}"
+            )
+        else:
+            if incomplete:
+                log(f"  [WARNING] Metabase export looks incomplete for {d.isoformat()} (forced):")
+                for reason in reasons:
+                    log(f"    - {reason}")
+            lpl = _attach_metabase_status(lpl, mb, cfg)
     anomalies = extractor.anomaly_summary()
     if anomalies:
         log(
