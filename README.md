@@ -52,12 +52,12 @@ nobody notices.
 
 Expected output on the sample data (verified by `tests/test_pipeline.py`):
 
-    Found 3 statements, 2 ledger files, 2 metabase files.
+    Found 4 statements, 2 ledger files, 2 metabase files.
 
     === Processing 2026-01-05 ===
-      Line Per Line: 70 rows | Recon 62 | Unrecon 8 | ambiguous 4 | wrong routing 1 | weak matches 2
+      Line Per Line: 71 rows | Recon 62 | Unrecon 9 | ambiguous 4 | wrong routing 1 | weak matches 2
       Unrecon (bank side): pending_gds 2 | pending_upstream 1 | confirmed_missing 1
-      Unrecon (ledger side): pending_bank_posting 0 | pending_upstream 0 | ledger_only_unconfirmed 2
+      Unrecon (ledger side): pending_bank_posting 0 | pending_upstream 0 | ledger_only_unconfirmed 3
       Unrecon (no reference): 0
     === Processing 2026-01-06 ===
       Line Per Line: 70 rows | Recon 62 | Unrecon 8 | ambiguous 4 | wrong routing 1 | weak matches 2
@@ -66,7 +66,9 @@ Expected output on the sample data (verified by `tests/test_pipeline.py`):
       Unrecon (no reference): 0
     === Processing 2026-01-07 ===
       [SKIPPED - STATEMENT LOOKS INCOMPLETE] 2026-01-07
-    === Recheck === resolved rows moved: 2 | still pending: 14
+    === Processing 2026-01-08 ===
+      Line Per Line: 1 rows | Recon 0 | Unrecon 1 | ambiguous 0 | wrong routing 0 | weak matches 0
+    === Recheck === resolved rows moved: 4 | still pending: 14
 
 See [docs/SAMPLE_OUTPUT.md](docs/SAMPLE_OUTPUT.md) for real excerpts of the report.
 

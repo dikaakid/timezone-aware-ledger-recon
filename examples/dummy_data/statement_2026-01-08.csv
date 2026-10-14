@@ -1,0 +1,2 @@
+txn_id,account_no,posted_at,description,direction,amount
+B0108-0001,0100000002,2026-01-08 09:00:00,TRF 8800599988877777 FROM CUSTOMER PASS0,CR,200000

@@ -11,14 +11,15 @@ tables here are excerpts from them.
 
 | metric | value |
 |---|---|
-| total_rows | 70 |
+| total_rows | 71 |
 | recon | 62 |
-| unrecon | 8 |
+| unrecon | 9 |
 | bank_only | 5 |
-| ledger_only | 3 |
+| ledger_only | 4 |
 | ambiguous_rows | 4 |
 | wrong_routing | 1 |
 | weak_matches | 2 |
+| amount_mismatch_rows | 2 |
 | rejected_rows | 3 |
 | statement_placeholder_rows | 0 |
 
@@ -38,6 +39,7 @@ mismatch, and its bank-side row received the username from same-day reference hi
 | 8800410644026623 | 65000 |  | L0105-0064 | merchant_2 | LEDGER SUCCESS WITHOUT BANK CREDIT (ledger 1x, bank 0x) - MANUAL REVIEW |
 | 8800439498116277 | 150000 | B0105-0065 |  | merchant_5 | WAITING_LEDGER \| username auto-filled from same-day reference history |
 | 8800439498116277 | 155000 |  | L0105-0062 | merchant_5 | LEDGER SUCCESS WITHOUT BANK CREDIT (ledger 1x, bank 0x) - MANUAL REVIEW |
+| 8800599988877777 | 200000 |  | L0105-0069 | merchant_pass0 | LEDGER SUCCESS WITHOUT BANK CREDIT (ledger 1x, bank 0x) - MANUAL REVIEW |
 
 ## Ambiguous group (every row in it is flagged, including the `Recon` ones)
 
@@ -78,8 +80,8 @@ resolving two bank rows.
 | sheet | rows |
 |---|---|
 | 2026-01 | 14 |
-| Resolved | 2 |
-| Consumed_Ledger_IDs | 125 |
+| Resolved | 4 |
+| Consumed_Ledger_IDs | 126 |
 
 
 ## Amount mismatch detection
@@ -177,7 +179,7 @@ like this:
 
 | day | bank side (pg / up / miss) | ledger side (pbp / up / unconf) | no reference |
 |---|---|---|---|
-| 2026-01-05 | 2 / 1 / 1 | 0 / 0 / 2 | 0 |
+| 2026-01-05 | 2 / 1 / 1 | 0 / 0 / 3 | 0 |
 | 2026-01-06 | 1 / 1 / 1 | 0 / 0 / 3 | 0 |
 
 Abbreviations:

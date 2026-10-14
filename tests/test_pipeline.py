@@ -23,11 +23,11 @@ def test_batch_on_sample_data_matches_documented_numbers(data, tmp_path):
     result = run_batch(data, out, ReconConfig(), log=lambda *_: None)
     day1 = result["days"][pd.Timestamp("2026-01-05").date()]
     assert day1 == {
-        "total_rows": 70,
+        "total_rows": 71,
         "recon": 62,
-        "unrecon": 8,
+        "unrecon": 9,
         "bank_only": 5,
-        "ledger_only": 3,
+        "ledger_only": 4,
         "ambiguous_rows": 4,
         "wrong_routing": 1,
         "weak_matches": 2,
@@ -35,7 +35,10 @@ def test_batch_on_sample_data_matches_documented_numbers(data, tmp_path):
         "rejected_rows": 3,
     }
     assert not (out / "recon_2026-01-07.xlsx").exists()  # incomplete statement skipped
-    assert result["recheck"]["resolved"] == 2  # cross-midnight pair closed
+    # Two recheck resolutions: the cross-midnight pair on Jan 5/6 (Pass 1),
+    # and the Pass 0 pair where the ledger arrived Jan 5 but the bank did
+    # not post until Jan 8.
+    assert result["recheck"]["resolved"] == 4
 
 
 def test_second_run_skips_finished_dates_and_force_overrides_guard(data, tmp_path):

@@ -8,5 +8,5 @@ report timestamps in different timezones.
 from .config import ReconConfig
 from .core import build_line_per_line, summarize
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 __all__ = ["ReconConfig", "build_line_per_line", "summarize"]

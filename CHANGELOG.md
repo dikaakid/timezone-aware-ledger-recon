@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-10-14
+
+### Fixed
+- A payment whose ledger entry came before its bank entry was never
+  reconciled. Pass 1 iterates bank-only pending rows and requires
+  `0 <= ledger_date - bank_date <= recheck_max_days`. When the ledger
+  arrived first (for example a transfer recorded on Saturday and posted
+  by the bank on Monday), the gap was negative, the forward-only check
+  rejected it, and the two rows stayed open forever.
+
+### Added
+- `_find_symmetric_pairs()` in `ledger_recon.tracker`: scans the tracker
+  itself for bank-only + ledger-only pending rows that share a
+  `(reference, amount_minor)` and sit within `recheck_max_days` of each
+  other in either direction. Refuses to pair when more than one row on
+  either side would make the pairing a guess, when the gap is outside
+  the window, or when either row is flagged `Amount_Mismatch = True`.
+- Pass 0 in `recheck_tracker` calls the new helper before the existing
+  forward-only pass. Any bank-only row it resolves is removed from the
+  tracker before Pass 1 sees it, so the two passes cannot double-resolve
+  the same row.
+- The sample data now ships one Pass 0 pair: ledger row `L0105-0069`
+  (reference `8800599988877777`, 200000, 2026-01-05) and bank row
+  `B0108-0001` (same reference, 2026-01-08). Running the pipeline
+  resolves both on the first recheck, which raises
+  `=== Recheck === resolved rows moved` from 2 to 4. The
+  `2026-01-08` statement is a new file, `statement_2026-01-08.csv`.
+- Eleven new tests: seven unit tests for `_find_symmetric_pairs` and
+  four integration tests for Pass 0 inside `recheck_tracker`.
+
+### Changed
+- `.gitignore` now blocks `output_*/` and `_*.txt`. Only `*.xlsx` was
+  holding the output directories back before, which would have let a
+  CSV through; scratch files from review sessions no longer show up as
+  untracked.
+
+90 tests pass (was 79).
+
 ## [1.3.0] - 2026-10-14
 
 ### Changed

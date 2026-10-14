@@ -250,6 +250,16 @@ def main() -> None:
     q, amount, when = day1.cross
     day2.led(q, amount, when, username="merchant_4")  # the other half of the cross-midnight payment
 
+    # Pass 0 demo. All RNG-based generation is done above; below is a
+    # hand-built pair that demonstrates the symmetric recheck. The ledger
+    # row arrives on Jan 5, the bank row on Jan 8. Forward-only Pass 1
+    # requires the ledger date to be at or after the bank date and cannot
+    # close this pair; Pass 0 pairs them because both are pending in the
+    # tracker within recheck_max_days of each other.
+    PASS0_REF = "8800599988877777"
+    PASS0_AMOUNT = 200000
+    day1.led(PASS0_REF, PASS0_AMOUNT, day1.at(500), username="merchant_pass0")
+
     write_csv(OUT / "statement_2026-01-05.csv", STATEMENT_COLS, day1.statement)
     write_csv(OUT / "statement_2026-01-06.csv", STATEMENT_COLS, day2.statement)
     write_csv(OUT / "ledger_2026-01-05_2026-01-06.csv", LEDGER_COLS, day1.ledger + day2.ledger)
@@ -272,8 +282,22 @@ def main() -> None:
         day3.led(day3.ref(), 10000 + i * 500, day3.at(i * 5))
     write_csv(OUT / "statement_2026-01-07.csv", STATEMENT_COLS, day3.statement)
     write_csv(OUT / "ledger_2026-01-07.csv", LEDGER_COLS, day3.ledger)
+
+    # Jan 8: only the bank side of the Pass 0 pair. There is no ledger file
+    # for this day -- the pipeline resolves the pair from the tracker, not
+    # from new input.
+    d4 = date(2026, 1, 8)
+    day4 = Day(d4, rng)
+    day4.bank(
+        PASS0_REF,
+        PASS0_AMOUNT,
+        day4.at(0),
+        desc=f"TRF {PASS0_REF} FROM CUSTOMER PASS0",
+    )
+    write_csv(OUT / "statement_2026-01-08.csv", STATEMENT_COLS, day4.statement)
+
     print(f"Sample data written to {OUT}")
-    print("  - 3 statements, 2 ledgers, 2 metabase files")
+    print("  - 4 statements, 2 ledgers, 2 metabase files")
     print(f"  - metabase_2026-01-05.csv: {len(day1.metabase_rows)} rows")
     print(f"  - metabase_2026-01-06.csv: {len(day2.metabase_rows)} rows")
 
