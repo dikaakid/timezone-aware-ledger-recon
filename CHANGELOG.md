@@ -195,7 +195,16 @@ All notable changes to this project are documented here. The format follows
 
 75 tests pass (unchanged).
 
-## [1.2.0] - 2026-10-14
+## [1.2.0] - 2026-10-14 [YANKED]
+
+> **Do not use this release.** The `Amount_Delta` column and the
+> `AMOUNT MISMATCH` case label were formatted in minor units
+> (`bank 15000000 vs ledger 15500000, delta +500000`) while the
+> adjacent `amount` column uses major units. A finance reader would
+> read the delta 100x larger than it is -- worse than no label.
+> Fixed in [1.2.1](#121---2026-10-14), which also splits the value
+> into `Amount_Delta` (major) and `Amount_Delta_Minor` (minor).
+> Yanked per [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - `detect_amount_mismatch()` in `ledger_recon.core`: identifies a bank
