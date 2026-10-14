@@ -116,3 +116,105 @@ def test_load_ledger_flags_conflicting_offset_separately():
     assert valid.empty
     assert len(rejected) == 1
     assert rejected["reject_reason"].iloc[0] == "conflicting offset in created_at"
+
+
+def test_load_statement_raises_on_mass_conflicting_offsets():
+    """More than the threshold of conflicting offsets is a config error."""
+    cfg = ReconConfig()
+    assert cfg.timezone_mismatch_threshold_pct == 30
+    assert cfg.timezone_mismatch_min_rows == 5
+
+    # Five of five rows carry an explicit +00:00 offset on a WIB source.
+    df = pd.DataFrame(
+        {
+            "txn_id": [f"T{i}" for i in range(5)],
+            "account_no": ["ACC1"] * 5,
+            "posted_at": [
+                "2026-01-05 00:30:00+00:00",
+                "2026-01-05 01:30:00+00:00",
+                "2026-01-05 02:30:00+00:00",
+                "2026-01-05 03:30:00+00:00",
+                "2026-01-05 04:30:00",
+            ],
+            "description": ["TRF1234567890123456"] * 5,
+            "direction": ["CR"] * 5,
+            "amount": ["10000"] * 5,
+        }
+    )
+    with pytest.raises(SystemExit, match="source timezone mismatch on statement"):
+        load_statement(df, cfg)
+
+
+def test_load_statement_keeps_single_conflicting_offset():
+    """One conflicting offset in five is a normal reject, not a system fault."""
+    cfg = ReconConfig()
+
+    df = pd.DataFrame(
+        {
+            "txn_id": [f"T{i}" for i in range(5)],
+            "account_no": ["ACC1"] * 5,
+            "posted_at": [
+                "2026-01-05 00:30:00+00:00",
+                "2026-01-05 01:30:00",
+                "2026-01-05 02:30:00",
+                "2026-01-05 03:30:00",
+                "2026-01-05 04:30:00",
+            ],
+            "description": ["TRF1234567890123456"] * 5,
+            "direction": ["CR"] * 5,
+            "amount": ["10000"] * 5,
+        }
+    )
+    valid, rejected, _, _ = load_statement(df, cfg)
+    assert len(valid) == 4
+    assert len(rejected) == 1
+    assert rejected["reject_reason"].iloc[0] == "conflicting offset in posted_at"
+
+
+def test_load_ledger_raises_on_mass_conflicting_offsets():
+    """Same guard as the statement loader, for the ledger side."""
+    cfg = ReconConfig()
+    assert cfg.timezone_mismatch_min_rows == 5
+
+    df = pd.DataFrame(
+        {
+            "ledger_id": [f"L{i}" for i in range(5)],
+            "reference": ["8800112345678901"] * 5,
+            "amount": ["10000"] * 5,
+            "created_at": [
+                "2026-01-05 00:30:00+00:00",
+                "2026-01-05 01:30:00+00:00",
+                "2026-01-05 02:30:00+00:00",
+                "2026-01-05 03:30:00+00:00",
+                "2026-01-05 04:30:00",
+            ],
+            "status": ["SUCCESS"] * 5,
+        }
+    )
+    with pytest.raises(SystemExit, match="source timezone mismatch on ledger"):
+        load_ledger(df, cfg)
+
+
+def test_load_ledger_keeps_single_conflicting_offset():
+    """One conflicting offset in five is a normal reject, not a system fault."""
+    cfg = ReconConfig()
+
+    df = pd.DataFrame(
+        {
+            "ledger_id": [f"L{i}" for i in range(5)],
+            "reference": ["8800112345678901"] * 5,
+            "amount": ["10000"] * 5,
+            "created_at": [
+                "2026-01-05 00:30:00+00:00",
+                "2026-01-05 01:30:00",
+                "2026-01-05 02:30:00",
+                "2026-01-05 03:30:00",
+                "2026-01-05 04:30:00",
+            ],
+            "status": ["SUCCESS"] * 5,
+        }
+    )
+    valid, rejected, _ = load_ledger(df, cfg)
+    assert len(valid) == 4
+    assert len(rejected) == 1
+    assert rejected["reject_reason"].iloc[0] == "conflicting offset in created_at"

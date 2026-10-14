@@ -81,6 +81,21 @@ def load_statement(src, cfg: ReconConfig):
     flag(~df["direction"].isin(["CR", "DB"]), "invalid direction (expected CR or DB)")
     flag(df["txn_id"].duplicated(keep="first") & df["txn_id"].notna(), "duplicate txn_id")
 
+    # Mass rejection by conflicting offset is a configuration mistake, not a
+    # file problem. Fail with a message that points at the timezone config
+    # instead of letting the run continue with a nearly empty frame and a
+    # downstream "statement looks incomplete" warning that misdiagnoses it.
+    if len(df) >= cfg.timezone_mismatch_min_rows:
+        statement_conflict_pct = 100 * int(statement_conflict.sum()) / len(df)
+        if statement_conflict_pct > cfg.timezone_mismatch_threshold_pct:
+            raise SystemExit(
+                f"source timezone mismatch on statement: "
+                f"{int(statement_conflict.sum())} of {len(df)} rows "
+                f"({statement_conflict_pct:.0f}%) carry an explicit offset "
+                f"that conflicts with the configured source timezone. "
+                f"Check source_timezones['statement'], not the file."
+            )
+
     ok = reason == ""
     rejected = df[~ok].copy()
     rejected["reject_reason"] = reason[~ok]
@@ -118,6 +133,19 @@ def load_ledger(src, cfg: ReconConfig):
     flag(ledger_conflict, "conflicting offset in created_at")
     flag(amount.isna(), "invalid amount")
     flag(df["ledger_id"].duplicated(keep="first") & df["ledger_id"].notna(), "duplicate ledger_id")
+
+    # Same guard as the statement loader: a mass rejection at this scale is
+    # a configuration mistake, not a file problem.
+    if len(df) >= cfg.timezone_mismatch_min_rows:
+        ledger_conflict_pct = 100 * int(ledger_conflict.sum()) / len(df)
+        if ledger_conflict_pct > cfg.timezone_mismatch_threshold_pct:
+            raise SystemExit(
+                f"source timezone mismatch on ledger: "
+                f"{int(ledger_conflict.sum())} of {len(df)} rows "
+                f"({ledger_conflict_pct:.0f}%) carry an explicit offset "
+                f"that conflicts with the configured source timezone. "
+                f"Check source_timezones['ledger'], not the file."
+            )
 
     ok = reason == ""
     rejected = df[~ok].copy()

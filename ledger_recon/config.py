@@ -62,6 +62,21 @@ class ReconConfig:
 
     # --- guards / tracker -----------------------------------------------
     placeholder_text: str = "no transaction found"
+    # If more than this percentage of rows in a single file are rejected
+    # because their explicit offset conflicts with the configured source
+    # timezone, the loader raises instead of producing a mostly-empty
+    # valid frame. A mass rejection at this scale is almost always a
+    # configuration mistake (wrong source timezone) rather than a handful
+    # of bad rows; the downstream statement guard would otherwise report
+    # "statement looks incomplete", which points the operator at the
+    # wrong problem.
+    timezone_mismatch_threshold_pct: int = 30
+    # Minimum number of rows in a file before the mass-rejection guard runs.
+    # Below this, a high percentage is just arithmetic on a tiny sample: one
+    # bad row in a one-row file is 100% but is not evidence of a systematic
+    # timezone mistake, it is one bad row. The guard needs a denominator
+    # large enough that the ratio means something.
+    timezone_mismatch_min_rows: int = 5
     recheck_max_days: int = 7  # a pending bank row may only resolve against
     # a ledger row up to N days later
     tracker_backup_keep: int = 10
