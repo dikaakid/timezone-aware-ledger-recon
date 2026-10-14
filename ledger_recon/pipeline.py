@@ -91,6 +91,57 @@ def _attach_metabase_status(lpl: pd.DataFrame, mb: pd.DataFrame, cfg: ReconConfi
     return merged
 
 
+def _classify_unrecon_counts(lpl: pd.DataFrame, summary: dict) -> dict:
+    """Return counts for every Unrecon category and assert they add up.
+
+    The pipeline prints one line per category of Unrecon. Rows flagged
+    Amount_Mismatch = True are deliberately excluded from the Metabase
+    verification pass, so they have no Metabase_Status and are not
+    counted by the bank/ledger/no_reference lines. Before this helper
+    existed, those rows silently disappeared from the printed log: the
+    four lines were printed but nothing checked that they covered every
+    Unrecon row.
+
+    Every Unrecon row must land in exactly one of: bank side, ledger
+    side, no reference, or amount mismatch. If a future change adds a
+    category and forgets to update this function, the assertion raises
+    instead of the log quietly under-counting.
+
+    Called only when Metabase_Status is present; without that column the
+    bank/ledger/no_reference counts cannot be derived.
+
+    Returns a dict with keys: bank, ledger, noref, mismatch.
+    """
+    counts = lpl["Metabase_Status"].value_counts()
+
+    bank = (
+        int(counts.get(UNRECON_PENDING_GDS, 0))
+        + int(counts.get(UNRECON_PENDING_UPSTREAM_BANK, 0))
+        + int(counts.get(UNRECON_CONFIRMED_MISSING, 0))
+    )
+    ledger = (
+        int(counts.get(UNRECON_PENDING_BANK_POSTING, 0))
+        + int(counts.get(UNRECON_PENDING_UPSTREAM_LEDGER, 0))
+        + int(counts.get(UNRECON_LEDGER_ONLY_UNCONFIRMED, 0))
+    )
+    noref = int(counts.get(UNRECON_NO_REF, 0))
+    mismatch = int(lpl["Amount_Mismatch"].fillna(False).sum()) if "Amount_Mismatch" in lpl.columns else 0
+
+    counted = bank + ledger + noref + mismatch
+    reported = int(summary["unrecon"])
+    if counted != reported:
+        raise RuntimeError(
+            "Unrecon classification does not add up: "
+            f"bank {bank} + ledger {ledger} + no_ref {noref} + "
+            f"mismatch {mismatch} = {counted}, but the summary reports "
+            f"{reported} Unrecon rows. Every Unrecon row must land in "
+            "exactly one category. This is a bug in pipeline.py, not in "
+            "the input data."
+        )
+
+    return {"bank": bank, "ledger": ledger, "noref": noref, "mismatch": mismatch}
+
+
 def ledgers_for(index: list, start: date, end: date) -> list:
     seen, out = set(), []
     for s, e, fp in index:
@@ -236,6 +287,7 @@ def run_batch(
         lpl_cols = res["lpl"].columns
         if "Metabase_Status" in lpl_cols:
             counts = res["lpl"]["Metabase_Status"].value_counts()
+            classified = _classify_unrecon_counts(res["lpl"], s)
             log(
                 f"  Unrecon (bank side): "
                 f"pending_gds {int(counts.get(UNRECON_PENDING_GDS, 0))} | "
@@ -249,6 +301,7 @@ def run_batch(
                 f"ledger_only_unconfirmed {int(counts.get(UNRECON_LEDGER_ONLY_UNCONFIRMED, 0))}"
             )
             log(f"  Unrecon (no reference): {int(counts.get(UNRECON_NO_REF, 0))}")
+            log(f"  Unrecon (amount mismatch): {classified['mismatch']}")
         log(f"  -> Saved: {out_path}")
         results[d] = s
         if not res["unrecon"].empty:

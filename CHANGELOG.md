@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.4.1] - 2026-10-14
+
+### Fixed
+- The pipeline log printed four categories of Unrecon but nothing
+  checked that they covered every row. Amount-mismatch rows are
+  deliberately excluded from Metabase verification, so they have no
+  Metabase_Status and were not counted by the bank/ledger/no-reference
+  lines. On the sample data the log showed 4 + 3 + 0 = 7 while the
+  header said Unrecon 9. Two rows vanished from the operator's view.
+
+  The log now prints a fifth line, `Unrecon (amount mismatch): N`, and
+  `_classify_unrecon_counts()` raises a RuntimeError if the four
+  categories ever fail to sum to the reported Unrecon total. A future
+  change that adds a category and forgets to update the classification
+  will fail loudly instead of silently under-counting.
+
+92 tests pass (was 90).
+
 ## [1.4.0] - 2026-10-14
 
 ### Fixed

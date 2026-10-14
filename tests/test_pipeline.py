@@ -119,3 +119,37 @@ def test_readme_pair_command_example(tmp_path):
     assert rc == 0
     assert out.exists()
     assert out.stat().st_size > 1000, "report.xlsx should not be empty"
+
+
+def test_classify_unrecon_counts_covers_every_row():
+    """The four categories must sum to the reported unrecon count."""
+    from ledger_recon.pipeline import _classify_unrecon_counts
+
+    lpl = pd.DataFrame(
+        [
+            {"Metabase_Status": "Unrecon - pending GDS", "Amount_Mismatch": False},
+            {"Metabase_Status": "Unrecon - confirmed missing", "Amount_Mismatch": False},
+            {"Metabase_Status": "Unrecon - pending bank posting", "Amount_Mismatch": False},
+            {"Metabase_Status": "Unrecon - ledger only, no confirmation", "Amount_Mismatch": False},
+            {"Metabase_Status": None, "Amount_Mismatch": True},
+            {"Metabase_Status": None, "Amount_Mismatch": True},
+        ]
+    )
+    summary = {"unrecon": 6}
+    out = _classify_unrecon_counts(lpl, summary)
+    assert out == {"bank": 2, "ledger": 2, "noref": 0, "mismatch": 2}
+
+
+def test_classify_unrecon_counts_raises_on_imbalance():
+    """A row that falls into no category triggers a RuntimeError."""
+    from ledger_recon.pipeline import _classify_unrecon_counts
+
+    lpl = pd.DataFrame(
+        [
+            {"Metabase_Status": "Unrecon - pending GDS", "Amount_Mismatch": False},
+            {"Metabase_Status": None, "Amount_Mismatch": False},  # uncounted
+        ]
+    )
+    summary = {"unrecon": 2}
+    with pytest.raises(RuntimeError, match="does not add up"):
+        _classify_unrecon_counts(lpl, summary)
