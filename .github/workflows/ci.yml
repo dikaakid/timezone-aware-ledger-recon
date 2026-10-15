@@ -30,6 +30,11 @@ jobs:
           cache-dependency-path: pyproject.toml
       - name: Install
         run: python -m pip install -e ".[dev]"
+      - name: Show environment
+        run: |
+          python --version
+          python -m pip show pandas numpy
+          python -c "import pandas as pd; print('pandas', pd.__version__)"
       - name: Run tests
         run: python -m pytest -q
 
