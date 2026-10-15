@@ -53,23 +53,27 @@ def _accept_aware(ts: pd.Timestamp, tz: ZoneInfo) -> pd.Timestamp | None:
     return None
 
 
+def _parse_iso(x: object) -> pd.Timestamp:
+    """Parse one value as ISO-8601 only (same strictness as the vectorised fast path).
+
+    Anything that is not ISO-8601 becomes NaT. Never use ``pd.Timestamp(x)`` here: it
+    falls back to dateutil and silently reads ``05/01/2026`` as 1 May.
+    """
+    return pd.to_datetime(x, errors="coerce", format="ISO8601")
+
+
 def _localize_slow(series: pd.Series, tz: ZoneInfo) -> pd.Series:
     """Per-element fallback for mixed naive/aware or mixed-offset input.
 
-    pandas raises ValueError on these inputs instead of returning an object
-    array, so we cannot rely on the fast path. Reading values one at a time
-    is slower but keeps the reject-and-report contract intact.
+    Keeps the reject-and-report contract: naive rows are accepted, aware rows whose
+    offset conflicts with the source become NaT, and non-ISO rows become NaT.
     """
     result = []
     for x in series:
         if x is None or (isinstance(x, float) and pd.isna(x)):
             result.append(pd.NaT)
             continue
-        try:
-            ts = pd.Timestamp(x)
-        except (ValueError, TypeError):
-            result.append(pd.NaT)
-            continue
+        ts = _parse_iso(x)
         if pd.isna(ts):
             result.append(pd.NaT)
             continue
