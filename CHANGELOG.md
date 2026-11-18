@@ -4,6 +4,45 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-11-18
+
+### Added
+- Mass timezone mismatch guard in `load_statement` and `load_ledger`: the run
+  stops (`SystemExit`) when more than `timezone_mismatch_threshold_pct`
+  (default 30) of the rows are rejected for a conflicting offset, on a file
+  of at least `timezone_mismatch_min_rows` (default 5) rows. The message
+  names the config key to check instead of blaming the file. The usual
+  cause is a whole file exported in the wrong timezone.
+- Amount-mismatch guards in `detect_amount_mismatch`: a bank-only and a
+  ledger-only row are no longer paired when the reference is used more than
+  `high_frequency_threshold` times that day (default 5), or when the two
+  timestamps are more than `mismatch_max_minutes` apart (default 60).
+- `_classify_mismatch_verdict` in `ledger_recon.metabase`: internal helper
+  that classifies a mismatch against Metabase data. Not yet used by the
+  pipeline.
+- CI logs the Python, pandas and numpy versions before running the tests.
+
+### Changed
+- `detect_amount_mismatch` now takes the `ReconConfig` (`cfg`) so the new
+  guards are configurable.
+
+### Fixed
+- Timestamp parsing in the mixed naive/aware fallback is strict ISO-8601.
+  Values such as `05/01/2026` are rejected instead of being read by
+  dateutil as 1 May.
+- On pandas < 3, a column mixing rows with an explicit offset and rows
+  without one was decided from the first row only. A leading conflicting
+  offset rejected every row in the file, and a leading `+07:00` on a
+  Metabase (UTC) export did the same to valid naive rows.
+  `localize()` now detects such columns and judges each row on its own.
+  pandas 3 was not affected because it raises and already used the
+  per-row path. CI exposed this on Python 3.10, where pandas 3 is
+  unavailable.
+
+### Documentation
+- Release note templates for v1.0.0 through v1.5.0.
+- v1.2.0 is marked as yanked.
+
 ## [1.5.0] - 2026-10-14
 
 ### Added
