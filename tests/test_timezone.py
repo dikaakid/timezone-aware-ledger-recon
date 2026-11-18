@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date
 
 import pandas as pd
+import pytest
 
 from ledger_recon.tz import TZ_JAKARTA, localize
 
@@ -118,3 +119,23 @@ def test_mixed_naive_and_conflicting_aware_in_one_column():
     out = localize(s, "statement")
     assert out.dt.hour.iloc[0] == 0
     assert pd.isna(out.iloc[1])
+
+
+@pytest.mark.parametrize("pos", [0, 2, 4])
+def test_mixed_naive_and_conflicting_offset_rejects_only_that_row(pos):
+    """Regression: pandas < 3 let the first row's offset decide the whole column."""
+    rows = ["2026-01-05 01:30:00"] * 4
+    rows.insert(pos, "2026-01-05 00:30:00+00:00")
+    out = localize(pd.Series(rows), "statement")
+    assert [bool(v) for v in out.notna()] == [i != pos for i in range(5)]
+
+
+def test_mixed_column_naive_rows_use_source_tz_not_first_offset():
+    out = localize(pd.Series(["2026-01-05 07:30:00+07:00", "2026-01-05 01:00:00"]), "metabase")
+    assert pd.isna(out.iloc[0])  # +07:00 conflicts with UTC source
+    assert out.iloc[1] == pd.Timestamp("2026-01-05 08:00:00+07:00")
+
+
+def test_day_first_dates_are_not_mistaken_for_offsets():
+    out = localize(pd.Series(["05-01-2026", "05-01-2026 10:00:00"]), "statement")
+    assert out.isna().all()

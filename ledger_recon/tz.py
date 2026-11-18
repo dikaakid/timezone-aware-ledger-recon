@@ -17,6 +17,7 @@ failure mode. Every conversion in the codebase goes through `localize()`.
 
 from __future__ import annotations
 
+import re
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -29,6 +30,26 @@ DEFAULT_SOURCE_TZ: dict[str, ZoneInfo] = {
     "ledger": TZ_JAKARTA,
     "metabase": TZ_UTC,
 }
+
+
+# An ISO-8601 time followed by an explicit offset. Anchored on the time part so a
+# date such as 05-01-2026 is never mistaken for an offset.
+_OFFSET_TAIL = re.compile(r"\d{2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?\s*(?:Z|[+-]\d{2}(?::?\d{2})?)\s*$")
+
+
+def _mixes_naive_and_aware(series: pd.Series) -> bool:
+    """True when string values mix rows with an explicit offset and rows without.
+
+    pandas < 3 does not raise on such a column: it silently applies the first
+    row's offset to every naive row (or collapses to UTC), so the column-level
+    fast paths would decide for all rows from one sample. Detect it up front
+    and let the per-element path judge each row on its own.
+    """
+    text = series.dropna()
+    if text.empty or not text.map(lambda v: isinstance(v, str)).all():
+        return False
+    has_offset = text.str.strip().str.contains(_OFFSET_TAIL)
+    return bool(has_offset.any() and not has_offset.all())
 
 
 def _resolve_tz(source: str, mapping: dict | None) -> ZoneInfo:
@@ -97,6 +118,9 @@ def localize(series: pd.Series, source: str, mapping: dict | None = None) -> pd.
     rows with the wrong offset become NaT, and the pipeline never crashes.
     """
     tz = _resolve_tz(source, mapping)
+
+    if _mixes_naive_and_aware(series):
+        return _localize_slow(series, tz)
 
     try:
         raw = pd.to_datetime(series, errors="coerce", format="ISO8601")
